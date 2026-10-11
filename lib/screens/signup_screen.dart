@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/validators.dart';
 import '../widgets/app_logo.dart';
-
-enum UserRole { buyer, seller }
+import '../widgets/google_sign_in_button.dart';
+import '../widgets/password_strength_indicator.dart';
+import '../widgets/role_selector.dart';
+import '../widgets/username_field.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -14,6 +18,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -24,110 +29,53 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild on every keystroke so the strength meter updates live.
+    _passwordController.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  String? _validateName(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Name is required';
-    if (value.trim().length < 3) return 'Name must be at least 3 characters';
-    return null;
-  }
-
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Email is required';
-    final emailRegex = RegExp(r'^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,4}$');
-    if (!emailRegex.hasMatch(value.trim())) {
-      return 'Enter a valid email address';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Password is required';
-    if (value.length < 6) return 'Password must be at least 6 characters';
-    return null;
-  }
-
-  String? _validateConfirmPassword(String? value) {
-    if (value == null || value.isEmpty) return 'Please confirm your password';
-    if (value != _passwordController.text) return 'Passwords do not match';
-    return null;
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-
-    // TODO: Replace with real Firebase Auth + Firestore call, e.g.:
-    // final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-    //   email: _emailController.text.trim(),
-    //   password: _passwordController.text,
-    // );
-    // await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set({
-    //   'name': _nameController.text.trim(),
-    //   'email': _emailController.text.trim(),
-    //   'role': _selectedRole == UserRole.buyer ? 'buyer' : 'seller',
-    // });
-    await Future.delayed(const Duration(milliseconds: 900)); // placeholder
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Account created! Please log in.')),
-    );
-
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    Navigator.of(context).pop(); // back to Login screen
-  }
-
-  Widget _buildRoleOption({
-    required UserRole role,
-    required IconData icon,
-    required String label,
-  }) {
-    final bool selected = _selectedRole == role;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedRole = role),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors.primary.withValues(alpha: 0.1)
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.6 : 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon,
-                  color: selected ? AppColors.primary : AppColors.textMuted,
-                  size: 24),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: selected ? AppColors.primary : AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    try {
+      await AuthService.instance.signUpWithEmail(
+        name: _nameController.text,
+        username: _usernameController.text,
+        email: _emailController.text,
+        password: _passwordController.text,
+        role: _selectedRole.value,
+      );
+      // Account is created and signed in; sign out so the user logs in
+      // themselves from the Login screen.
+      await AuthService.instance.signOut();
+      if (!mounted) return;
+      _showMessage('Account created! Please log in.');
+      Navigator.of(context).pop();
+    } on AuthException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } catch (_) {
+      if (mounted) _showMessage('Sign up failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -161,26 +109,16 @@ class _SignupScreenState extends State<SignupScreen> {
                 Text('I want to',
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _buildRoleOption(
-                      role: UserRole.buyer,
-                      icon: Icons.shopping_bag_outlined,
-                      label: 'Buy',
-                    ),
-                    const SizedBox(width: 12),
-                    _buildRoleOption(
-                      role: UserRole.seller,
-                      icon: Icons.storefront_outlined,
-                      label: 'Sell',
-                    ),
-                  ],
+                RoleSelector(
+                  selected: _selectedRole,
+                  onChanged: (r) => setState(() => _selectedRole = r),
                 ),
                 const SizedBox(height: 20),
 
                 TextFormField(
                   controller: _nameController,
-                  validator: _validateName,
+                  validator: Validators.name,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Full Name',
                     prefixIcon: Icon(Icons.person_outline,
@@ -189,10 +127,13 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                UsernameField(controller: _usernameController),
+                const SizedBox(height: 16),
+
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  validator: _validateEmail,
+                  validator: Validators.email,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     prefixIcon:
@@ -204,7 +145,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  validator: _validatePassword,
+                  validator: Validators.newPassword,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline,
@@ -221,12 +162,14 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                 ),
+                PasswordStrengthIndicator(password: _passwordController.text),
                 const SizedBox(height: 16),
 
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirm,
-                  validator: _validateConfirmPassword,
+                  validator: (v) =>
+                      Validators.confirmPassword(v, _passwordController.text),
                   decoration: InputDecoration(
                     labelText: 'Confirm Password',
                     prefixIcon: const Icon(Icons.lock_outline,
@@ -258,6 +201,22 @@ class _SignupScreenState extends State<SignupScreen> {
                         )
                       : const Text('Create Account'),
                 ),
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    const Expanded(child: Divider(color: AppColors.border)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('or',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                    const Expanded(child: Divider(color: AppColors.border)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                const GoogleSignInButton(label: 'Sign up with Google'),
                 const SizedBox(height: 16),
 
                 Row(

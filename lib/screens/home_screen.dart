@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../models/user_profile.dart';
+import '../services/auth_service.dart';
 import '../widgets/product_card.dart';
-import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,6 +14,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
+  UserProfile? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) return;
+    try {
+      final profile = await AuthService.instance.getProfile(user.uid);
+      if (mounted) setState(() => _profile = profile);
+    } catch (_) {
+      // Greeting just falls back to a generic "Hello".
+    }
+  }
 
   static const List<Map<String, dynamic>> _categories = [
     {'label': 'Tops', 'icon': Icons.checkroom_outlined},
@@ -90,10 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => p.isWishlisted = !p.isWishlisted);
   }
 
-  void _logout() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
+  Future<void> _openProfile() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
     );
   }
 
@@ -103,8 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     if (index == 4) {
-      // Profile tab — placeholder logs out for now until Profile screen exists.
-      _logout();
+      _openProfile();
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -146,9 +164,22 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            'Find your next favorite 🛍️',
-                            style: Theme.of(context).textTheme.headlineMedium,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _profile == null
+                                    ? 'Hello 👋'
+                                    : 'Hi, ${_profile!.firstName} 👋',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Find your next favorite 🛍️',
+                                style:
+                                    Theme.of(context).textTheme.headlineMedium,
+                              ),
+                            ],
                           ),
                         ),
                         Stack(

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/validators.dart';
 import '../widgets/app_logo.dart';
-import 'signup_screen.dart';
+import '../widgets/google_sign_in_button.dart';
+import 'complete_profile_screen.dart';
+import 'forgot_password_screen.dart';
 import 'home_screen.dart';
+import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,38 +31,45 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Email is required';
-    final emailRegex = RegExp(r'^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,4}$');
-    if (!emailRegex.hasMatch(value.trim())) {
-      return 'Enter a valid email address';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Password is required';
-    if (value.length < 6) return 'Password must be at least 6 characters';
-    return null;
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    try {
+      final user = await AuthService.instance.signInWithEmail(
+        _emailController.text,
+        _passwordController.text,
+      );
+      final hasProfile = await AuthService.instance.profileExists(user.uid);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) =>
+              hasProfile ? const HomeScreen() : const CompleteProfileScreen(),
+        ),
+        (route) => false,
+      );
+    } on AuthException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } catch (_) {
+      if (mounted) _showMessage('Login failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-    // TODO: Replace with real Firebase Auth call:
-    // await FirebaseAuth.instance.signInWithEmailAndPassword(
-    //   email: _emailController.text.trim(),
-    //   password: _passwordController.text,
-    // );
-    await Future.delayed(const Duration(milliseconds: 900)); // placeholder
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+  void _openForgotPassword() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            ForgotPasswordScreen(initialEmail: _emailController.text),
+      ),
     );
   }
 
@@ -73,9 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Center(
-                  child: AppLogo(size: 76, showTagline: true),
-                ),
+                const Center(child: AppLogo(size: 76, showTagline: true)),
                 const SizedBox(height: 36),
 
                 Text('Welcome back',
@@ -88,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  validator: _validateEmail,
+                  validator: Validators.email,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     prefixIcon:
@@ -100,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  validator: _validatePassword,
+                  validator: Validators.loginPassword,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline,
@@ -120,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: _openForgotPassword,
                     child: const Text('Forgot password?'),
                   ),
                 ),
@@ -139,6 +149,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         )
                       : const Text('Log In'),
                 ),
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    const Expanded(child: Divider(color: AppColors.border)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('or',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                    const Expanded(child: Divider(color: AppColors.border)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                const GoogleSignInButton(),
                 const SizedBox(height: 20),
 
                 Row(
