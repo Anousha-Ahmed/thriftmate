@@ -12,7 +12,28 @@
           "package_name": "com.example.thriftmate"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "465196855268-pssi52qnt73ngujv7uhi9ijisie2fqqv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.thriftmate",
+            "certificate_hash": "1a50b1825954f458e4dd3d0a989dac6bce9a5b23"
+          }
+        },
+        {
+          "client_id": "465196855268-vfnapsb8o8lbjbq1c25a2r66k3u9bud8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.thriftmate",
+            "certificate_hash": "4ed46d45bb8f0b61987e1b66320667631c6b2edc"
+          }
+        },
+        {
+          "client_id": "465196855268-3qtg6oh1mabu83074m64ainl5udvd1qg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAeW7brv-XJZXBHrQEYTTqt7ixlchJYC3U"
@@ -20,7 +41,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "465196855268-3qtg6oh1mabu83074m64ainl5udvd1qg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "465196855268-fgp5ueic8jkn42kmbvli99k46fmf6mtu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.thriftmate"
+              }
+            }
+          ]
         }
       }
     }
