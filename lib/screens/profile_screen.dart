@@ -3,6 +3,10 @@ import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
+import '../utils/role_router.dart';
+import 'my_listings_screen.dart';
+import 'my_orders_screen.dart';
+import 'seller_orders_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -92,6 +96,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       (route) => false,
     );
   }
+
+  bool get _isSeller => _profile?.role == 'seller';
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +222,107 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: hasPassword ? _resetPassword : null,
                   ),
                 ),
+                if (_profile != null) ...[
+                  const SizedBox(height: 22),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text('Buying & selling',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        if (_isSeller) ...[
+                          ListTile(
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            leading: const Icon(Icons.storefront_outlined,
+                                color: AppColors.primary),
+                            title: const Text('My Listings'),
+                            subtitle: Text(
+                              'Add, edit, delete items and mark them as sold',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            trailing: const Icon(Icons.chevron_right,
+                                color: AppColors.textMuted),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const MyListingsScreen()),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1, color: AppColors.border),
+                        ],
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          leading: const Icon(Icons.receipt_long_outlined,
+                              color: AppColors.primary),
+                          title: const Text('My Orders'),
+                          subtitle: Text(
+                            'Track the things you have bought',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          trailing: const Icon(Icons.chevron_right,
+                              color: AppColors.textMuted),
+                          onTap: () {
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => const MyOrdersScreen()));
+                          },
+                        ),
+                        const Divider(height: 1, color: AppColors.border),
+                        if (_isSeller) ...[
+                          ListTile(
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            leading: const Icon(Icons.local_shipping_outlined,
+                                color: AppColors.primary),
+                            title: const Text('Orders received'),
+                            subtitle: Text(
+                              'Update shipping status for your buyers',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            trailing: const Icon(Icons.chevron_right,
+                                color: AppColors.textMuted),
+                            onTap: () {
+                              Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => const SellerOrdersScreen()));
+                            },
+                          ),
+                          const Divider(height: 1, color: AppColors.border),
+                        ],
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          leading: Icon(
+                            _isSeller
+                                ? Icons.shopping_bag_outlined
+                                : Icons.storefront_outlined,
+                            color: AppColors.primary,
+                          ),
+                          title: Text(
+                              _isSeller ? 'Switch to buying' : 'Start selling'),
+                          subtitle: Text(
+                            _isSeller
+                                ? 'Shop as a buyer with this same account'
+                                : 'Post your own items. Same account, no new signup.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          trailing: const Icon(Icons.chevron_right,
+                              color: AppColors.textMuted),
+                          onTap: () =>
+                              switchMode(context, _isSeller ? 'buyer' : 'seller'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 26),
 
                 OutlinedButton.icon(

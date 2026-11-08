@@ -189,6 +189,11 @@ class AuthService {
     );
   }
 
+  /// Switches the account between buyer and seller mode.
+  Future<void> setRole(String uid, String role) async {
+    await _db.collection('users').doc(uid).update({'role': role});
+  }
+
   Future<UserProfile?> getProfile(String uid) async {
     final doc = await _db.collection('users').doc(uid).get();
     final data = doc.data();

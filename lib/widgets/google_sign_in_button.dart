@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/complete_profile_screen.dart';
-import '../screens/home_screen.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/role_router.dart';
 
 /// "Continue with Google" button. Handles the full flow:
 ///   Google sign-in -> profile exists? -> Home
@@ -29,12 +29,14 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
     setState(() => _loading = true);
     try {
       final user = await AuthService.instance.signInWithGoogle();
-      final exists = await AuthService.instance.profileExists(user.uid);
+      final profile = await AuthService.instance.getProfile(user.uid);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) =>
-              exists ? const HomeScreen() : const CompleteProfileScreen(),
+              profile == null
+              ? const CompleteProfileScreen()
+              : homeForRole(profile.role),
         ),
         (route) => false,
       );

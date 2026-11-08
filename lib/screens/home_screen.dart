@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import '../models/item.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
+import '../services/item_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
+import 'add_edit_item_screen.dart';
+import 'cart_screen.dart';
+import 'my_orders_screen.dart';
+import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,11 +21,32 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
   UserProfile? _profile;
+  late final Stream<List<Item>> _itemsStream;
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  String? _category; // null means "All"
+  final Set<String> _wishlist = <String>{};
+
+  static const Map<String, IconData> _categoryIcons = {
+    'Tops': Icons.checkroom_outlined,
+    'Bottoms': Icons.dry_cleaning_outlined,
+    'Dresses': Icons.woman_outlined,
+    'Outerwear': Icons.ac_unit_outlined,
+    'Shoes': Icons.sports_handball_outlined,
+    'Bags': Icons.shopping_bag_outlined,
+  };
 
   @override
   void initState() {
     super.initState();
+    _itemsStream = ItemService.instance.activeItems();
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -29,85 +56,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final profile = await AuthService.instance.getProfile(user.uid);
       if (mounted) setState(() => _profile = profile);
     } catch (_) {
-      // Greeting just falls back to a generic "Hello".
+      // Greeting falls back to a generic "Hello".
     }
   }
 
-  static const List<Map<String, dynamic>> _categories = [
-    {'label': 'Tops', 'icon': Icons.checkroom_outlined},
-    {'label': 'Bottoms', 'icon': Icons.dry_cleaning_outlined},
-    {'label': 'Dresses', 'icon': Icons.woman_outlined},
-    {'label': 'Outerwear', 'icon': Icons.ac_unit_outlined},
-    {'label': 'Shoes', 'icon': Icons.sports_handball_outlined},
-    {'label': 'Bags', 'icon': Icons.shopping_bag_outlined},
-  ];
-
-  // Placeholder data — will be replaced with real Firestore listings.
-  final List<Product> _featured = [
-    Product(
-        name: 'Embroidered Lawn Kurta',
-        brand: 'Khaadi',
-        size: 'M',
-        condition: 'Like New',
-        price: 'Rs. 1,200'),
-    Product(
-        name: 'Slim Fit Denim Jeans',
-        brand: 'Levi\'s',
-        size: '32',
-        condition: 'Good',
-        price: 'Rs. 1,800'),
-    Product(
-        name: 'Leather Biker Jacket',
-        brand: 'Generic',
-        size: 'L',
-        condition: 'Good',
-        price: 'Rs. 2,500'),
-  ];
-
-  final List<Product> _freshFinds = [
-    Product(
-        name: 'Printed Maxi Dress',
-        brand: 'Sapphire',
-        size: 'S',
-        condition: 'Like New',
-        price: 'Rs. 1,500'),
-    Product(
-        name: 'Casual Sneakers',
-        brand: 'Nike',
-        size: '42',
-        condition: 'Fair',
-        price: 'Rs. 2,200'),
-    Product(
-        name: 'Quilted Tote Bag',
-        brand: 'Generic',
-        size: 'One Size',
-        condition: 'Good',
-        price: 'Rs. 850'),
-    Product(
-        name: 'Cotton Formal Shirt',
-        brand: 'Bonanza',
-        size: 'L',
-        condition: 'Like New',
-        price: 'Rs. 950'),
-  ];
-
-  final List<Product> _recommended = [
-    Product(
-        name: 'Winter Wool Coat',
-        brand: 'Generic',
-        size: 'M',
-        condition: 'Good',
-        price: 'Rs. 2,800'),
-    Product(
-        name: 'Palazzo Pants',
-        brand: 'Gul Ahmed',
-        size: 'S',
-        condition: 'Like New',
-        price: 'Rs. 1,000'),
-  ];
-
-  void _toggleWishlist(Product p) {
-    setState(() => p.isWishlisted = !p.isWishlisted);
+  void _toggleWishlist(String id) {
+    setState(() {
+      if (_wishlist.contains(id)) {
+        _wishlist.remove(id);
+      } else {
+        _wishlist.add(id);
+      }
+    });
   }
 
   Future<void> _openProfile() async {
@@ -116,233 +76,302 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _onNavTap(int index) {
-    if (index == 0) {
-      setState(() => _navIndex = index);
-      return;
-    }
-    if (index == 4) {
-      _openProfile();
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Coming soon')),
-    );
+  void _push(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
-  Widget _sectionHeader(String title) {
+  void _onNavTap(int index) {
+    switch (index) {
+      case 1:
+        _push(const CartScreen());
+        break;
+      case 2:
+        _push(const MyOrdersScreen());
+        break;
+      case 3:
+        _openProfile();
+        break;
+      default:
+        setState(() => _navIndex = 0);
+    }
+  }
+
+  List<Item> _applyFilters(List<Item> items) {
+    final q = _query.trim().toLowerCase();
+    return items.where((i) {
+      if (_category != null && i.category != _category) return false;
+      if (q.isEmpty) return true;
+      return i.name.toLowerCase().contains(q) ||
+          i.brand.toLowerCase().contains(q) ||
+          i.category.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          Text('See all',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.darkAccent)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _profile == null
+                      ? 'Hello 👋'
+                      : 'Hi, ${_profile!.firstName} 👋',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Find your next favorite 🛍️',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+              ],
+            ),
+          ),
+          Stack(
+            children: [
+              IconButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('No new notifications')),
+                  );
+                },
+                icon: const Icon(Icons.notifications_outlined,
+                    color: AppColors.textDark),
+              ),
+              Positioned(
+                right: 10,
+                top: 10,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.darkAccent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // Greeting + search + notification
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _profile == null
-                                    ? 'Hello 👋'
-                                    : 'Hi, ${_profile!.firstName} 👋',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Find your next favorite 🛍️',
-                                style:
-                                    Theme.of(context).textTheme.headlineMedium,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Stack(
-                          children: [
-                            IconButton(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('No new notifications')),
-                                );
-                              },
-                              icon: const Icon(Icons.notifications_outlined,
-                                  color: AppColors.textDark),
-                            ),
-                            Positioned(
-                              right: 10,
-                              top: 10,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.darkAccent,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.search, color: AppColors.textMuted),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 14),
-                              child: Text(
-                                'Search kurtas, jackets, bags...',
-                                style: TextStyle(color: AppColors.textMuted),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Categories
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                child: Text('Categories',
-                    style: Theme.of(context).textTheme.titleMedium),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 86,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    return Container(
-                      width: 74,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(cat['icon'] as IconData,
-                              color: AppColors.darkAccent, size: 24),
-                          const SizedBox(height: 6),
-                          Text(cat['label'] as String,
-                              style: const TextStyle(fontSize: 11.5)),
-                        ],
-                      ),
-                    );
+  Widget _buildSearch() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (v) => setState(() => _query = v),
+        decoration: InputDecoration(
+          hintText: 'Search kurtas, jackets, bags...',
+          fillColor: AppColors.surface,
+          prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, color: AppColors.textMuted),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
                   },
                 ),
-              ),
-            ),
+        ),
+      ),
+    );
+  }
 
-            // Featured — horizontal scroll
-            SliverToBoxAdapter(child: _sectionHeader('Featured Thrift Finds')),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 236,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: _featured.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 14),
-                  itemBuilder: (context, index) => ProductCard(
-                    width: 150,
-                    product: _featured[index],
-                    onWishlistTap: () => _toggleWishlist(_featured[index]),
-                  ),
-                ),
-              ),
-            ),
+  Widget _categoryTile(String? category) {
+    final bool selected = _category == category;
+    final IconData icon =
+        category == null ? Icons.apps_rounded : _categoryIcons[category]!;
+    return GestureDetector(
+      onTap: () => setState(() => _category = category),
+      child: Container(
+        width: 74,
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                color: selected ? AppColors.primary : AppColors.darkAccent,
+                size: 24),
+            const SizedBox(height: 6),
+            Text(category ?? 'All', style: const TextStyle(fontSize: 11.5)),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Fresh Finds — grid
-            SliverToBoxAdapter(child: _sectionHeader('Fresh Finds')),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.62,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => ProductCard(
-                    product: _freshFinds[index],
-                    onWishlistTap: () => _toggleWishlist(_freshFinds[index]),
-                  ),
-                  childCount: _freshFinds.length,
-                ),
-              ),
-            ),
+  Widget _buildCategories() {
+    final List<String?> options = [null, ...kCategories];
+    return SizedBox(
+      height: 86,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: options.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) => _categoryTile(options[index]),
+      ),
+    );
+  }
 
-            // Recommended — grid
-            SliverToBoxAdapter(child: _sectionHeader('Recommended For You')),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.62,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => ProductCard(
-                    product: _recommended[index],
-                    onWishlistTap: () => _toggleWishlist(_recommended[index]),
-                  ),
-                  childCount: _recommended.length,
-                ),
-              ),
+  Widget _emptyState({required bool hasAnyItems}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.checkroom_rounded,
+                size: 40, color: AppColors.secondary),
+            const SizedBox(height: 12),
+            Text(
+              hasAnyItems ? 'No items match your search' : 'No items listed yet',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasAnyItems
+                  ? 'Try another category or keyword.'
+                  : 'Sellers are adding their thrift finds. Check back soon!',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildItemSlivers(AsyncSnapshot<List<Item>> snap) {
+    if (snap.hasError) {
+      return [
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Could not load items. Check your connection.'),
+          ),
+        ),
+      ];
+    }
+    if (!snap.hasData) {
+      return [
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ];
+    }
+
+    final all = snap.data!;
+    final items = _applyFilters(all);
+    if (items.isEmpty) {
+      return [
+        SliverToBoxAdapter(child: _emptyState(hasAnyItems: all.isNotEmpty)),
+      ];
+    }
+
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.62,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final item = items[index];
+              return ProductCard(
+                product: Product.fromItem(
+                  item,
+                  wishlisted: _wishlist.contains(item.id),
+                ),
+                onWishlistTap: () => _toggleWishlist(item.id),
+                onTap: () => _push(ProductDetailScreen(item: item)),
+              );
+            },
+            childCount: items.length,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isSeller = _profile?.role == 'seller';
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: StreamBuilder<List<Item>>(
+          stream: _itemsStream,
+          builder: (context, snap) {
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _buildHeader()),
+                SliverToBoxAdapter(child: _buildSearch()),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                    child: Text('Categories',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                ),
+                SliverToBoxAdapter(child: _buildCategories()),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                    child: Text(_category ?? 'Fresh Finds',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                ),
+                ..._buildItemSlivers(snap),
+                const SliverToBoxAdapter(child: SizedBox(height: 90)),
+              ],
+            );
+          },
+        ),
+      ),
+      floatingActionButton: isSeller
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const AddEditItemScreen()),
+                );
+              },
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Sell'),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: _onNavTap,
@@ -354,11 +383,9 @@ class _HomeScreenState extends State<HomeScreen> {
               selectedIcon: Icon(Icons.home, color: AppColors.primary),
               label: 'Home'),
           NavigationDestination(
-              icon: Icon(Icons.explore_outlined), label: 'Explore'),
-          NavigationDestination(
               icon: Icon(Icons.shopping_cart_outlined), label: 'Cart'),
           NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
+              icon: Icon(Icons.receipt_long_outlined), label: 'Orders'),
           NavigationDestination(
               icon: Icon(Icons.person_outline), label: 'Profile'),
         ],

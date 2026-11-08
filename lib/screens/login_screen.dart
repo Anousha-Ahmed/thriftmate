@@ -6,7 +6,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/google_sign_in_button.dart';
 import 'complete_profile_screen.dart';
 import 'forgot_password_screen.dart';
-import 'home_screen.dart';
+import '../utils/role_router.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -46,12 +46,14 @@ class _LoginScreenState extends State<LoginScreen> {
         _emailController.text,
         _passwordController.text,
       );
-      final hasProfile = await AuthService.instance.profileExists(user.uid);
+      final profile = await AuthService.instance.getProfile(user.uid);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) =>
-              hasProfile ? const HomeScreen() : const CompleteProfileScreen(),
+              profile == null
+              ? const CompleteProfileScreen()
+              : homeForRole(profile.role),
         ),
         (route) => false,
       );

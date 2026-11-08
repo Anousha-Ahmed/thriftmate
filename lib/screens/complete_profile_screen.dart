@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/role_router.dart';
 import '../utils/validators.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/role_selector.dart';
 import '../widgets/username_field.dart';
-import 'home_screen.dart';
 import 'login_screen.dart';
 
 /// Shown after Google sign-in when the user has no profile yet:
@@ -58,7 +58,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => homeForRole(_selectedRole.value)),
         (route) => false,
       );
     } on AuthException catch (e) {
