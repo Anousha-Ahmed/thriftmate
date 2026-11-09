@@ -27,6 +27,12 @@ class ItemService {
       .snapshots()
       .map(_toSortedList);
 
+  /// A single listing (used when honouring an accepted offer at checkout).
+  Future<Item?> getItem(String id) async {
+    final doc = await _items.doc(id).get();
+    return doc.exists ? Item.fromDoc(doc) : null;
+  }
+
   List<Item> _toSortedList(QuerySnapshot<Map<String, dynamic>> snap) {
     final now = DateTime.now();
     final list = snap.docs.map(Item.fromDoc).toList();

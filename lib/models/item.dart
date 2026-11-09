@@ -7,6 +7,7 @@ const List<String> kCategories = [
   'Tops',
   'Bottoms',
   'Dresses',
+  'Bridal & Event',
   'Outerwear',
   'Shoes',
   'Bags',

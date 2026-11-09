@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -347,7 +346,7 @@ class _AddEditItemScreenState extends State<AddEditItemScreen> {
                   },
                   decoration: const InputDecoration(
                     labelText: 'Item name',
-                    hintText: 'e.g. Embroidered lawn kurta',
+                    hintText: 'e.g. Embroidered lawn shirt',
                   ),
                 ),
                 const SizedBox(height: 16),

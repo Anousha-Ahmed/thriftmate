@@ -1,394 +1,218 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../models/item.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
+import '../services/cart_service.dart';
 import '../services/item_service.dart';
+import '../services/saved_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/product_card.dart';
+import '../widgets/app_bottom_nav.dart';
 import 'add_edit_item_screen.dart';
+import 'browse_screen.dart';
 import 'cart_screen.dart';
-import 'my_orders_screen.dart';
-import 'product_detail_screen.dart';
+import 'chats_screen.dart';
+import 'discover_screen.dart';
+import 'my_listings_screen.dart';
 import 'profile_screen.dart';
+import 'seller_dashboard_screen.dart';
 
+/// The signed-in shell. Buying and selling get different tabs:
+/// buyer = Discover / Browse / Sell / Chats / Profile
+/// seller = Shop / Listings / Sell / Chats / Profile
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.role = 'buyer'});
+
+  final String role;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _navIndex = 0;
+  int _index = 0;
   UserProfile? _profile;
   late final Stream<List<Item>> _itemsStream;
-  final TextEditingController _searchController = TextEditingController();
-  String _query = '';
-  String? _category; // null means "All"
-  final Set<String> _wishlist = <String>{};
+  final Set<String> _savedIds = <String>{};
+  StreamSubscription<Set<String>>? _savedSubscription;
 
-  static const Map<String, IconData> _categoryIcons = {
-    'Tops': Icons.checkroom_outlined,
-    'Bottoms': Icons.dry_cleaning_outlined,
-    'Dresses': Icons.woman_outlined,
-    'Outerwear': Icons.ac_unit_outlined,
-    'Shoes': Icons.sports_handball_outlined,
-    'Bags': Icons.shopping_bag_outlined,
-  };
+  String? get _uid => AuthService.instance.currentUser?.uid;
+  bool get _isSeller => widget.role == 'seller';
 
   @override
   void initState() {
     super.initState();
     _itemsStream = ItemService.instance.activeItems();
     _loadProfile();
+    _watchSaved();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _savedSubscription?.cancel();
     super.dispose();
   }
 
   Future<void> _loadProfile() async {
-    final user = AuthService.instance.currentUser;
-    if (user == null) return;
+    final uid = _uid;
+    if (uid == null) return;
     try {
-      final profile = await AuthService.instance.getProfile(user.uid);
+      final profile = await AuthService.instance.getProfile(uid);
       if (mounted) setState(() => _profile = profile);
-    } catch (_) {
-      // Greeting falls back to a generic "Hello".
-    }
+    } catch (_) {}
   }
 
-  void _toggleWishlist(String id) {
+  void _watchSaved() {
+    final uid = _uid;
+    if (uid == null) return;
+    _savedSubscription = SavedService.instance.watch(uid).listen(
+      (ids) {
+        if (!mounted) return;
+        setState(() {
+          _savedIds
+            ..clear()
+            ..addAll(ids);
+        });
+      },
+      onError: (_) {},
+    );
+  }
+
+  Future<void> _toggleSaved(Item item) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final bool save = !_savedIds.contains(item.id);
     setState(() {
-      if (_wishlist.contains(id)) {
-        _wishlist.remove(id);
+      if (save) {
+        _savedIds.add(item.id);
       } else {
-        _wishlist.add(id);
+        _savedIds.remove(item.id);
       }
     });
-  }
-
-  Future<void> _openProfile() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-    );
-  }
-
-  void _push(Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-  }
-
-  void _onNavTap(int index) {
-    switch (index) {
-      case 1:
-        _push(const CartScreen());
-        break;
-      case 2:
-        _push(const MyOrdersScreen());
-        break;
-      case 3:
-        _openProfile();
-        break;
-      default:
-        setState(() => _navIndex = 0);
+    try {
+      await SavedService.instance.setSaved(
+        uid: uid,
+        itemId: item.id,
+        saved: save,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (save) {
+          _savedIds.remove(item.id);
+        } else {
+          _savedIds.add(item.id);
+        }
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Could not update your closet. Please try again.'),
+        ));
     }
   }
 
-  List<Item> _applyFilters(List<Item> items) {
-    final q = _query.trim().toLowerCase();
-    return items.where((i) {
-      if (_category != null && i.category != _category) return false;
-      if (q.isEmpty) return true;
-      return i.name.toLowerCase().contains(q) ||
-          i.brand.toLowerCase().contains(q) ||
-          i.category.toLowerCase().contains(q);
-    }).toList();
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _profile == null
-                      ? 'Hello 👋'
-                      : 'Hi, ${_profile!.firstName} 👋',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Find your next favorite 🛍️',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-              ],
-            ),
-          ),
-          Stack(
-            children: [
-              IconButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No new notifications')),
-                  );
-                },
-                icon: const Icon(Icons.notifications_outlined,
-                    color: AppColors.textDark),
-              ),
-              Positioned(
-                right: 10,
-                top: 10,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.darkAccent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+  void _openCart() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CartScreen()),
     );
   }
 
-  Widget _buildSearch() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      child: TextField(
-        controller: _searchController,
-        onChanged: (v) => setState(() => _query = v),
-        decoration: InputDecoration(
-          hintText: 'Search kurtas, jackets, bags...',
-          fillColor: AppColors.surface,
-          prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
-          suffixIcon: _query.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close, color: AppColors.textMuted),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _query = '');
-                  },
-                ),
-        ),
-      ),
+  void _openAddItem() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AddEditItemScreen()),
     );
   }
 
-  Widget _categoryTile(String? category) {
-    final bool selected = _category == category;
-    final IconData icon =
-        category == null ? Icons.apps_rounded : _categoryIcons[category]!;
-    return GestureDetector(
-      onTap: () => setState(() => _category = category),
-      child: Container(
-        width: 74,
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.1)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
-            width: selected ? 1.6 : 1,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon,
-                color: selected ? AppColors.primary : AppColors.darkAccent,
-                size: 24),
-            const SizedBox(height: 6),
-            Text(category ?? 'All', style: const TextStyle(fontSize: 11.5)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategories() {
-    final List<String?> options = [null, ...kCategories];
-    return SizedBox(
-      height: 86,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: options.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) => _categoryTile(options[index]),
-      ),
-    );
-  }
-
-  Widget _emptyState({required bool hasAnyItems}) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.checkroom_rounded,
-                size: 40, color: AppColors.secondary),
-            const SizedBox(height: 12),
-            Text(
-              hasAnyItems ? 'No items match your search' : 'No items listed yet',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasAnyItems
-                  ? 'Try another category or keyword.'
-                  : 'Sellers are adding their thrift finds. Check back soon!',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildItemSlivers(AsyncSnapshot<List<Item>> snap) {
-    if (snap.hasError) {
-      return [
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('Could not load items. Check your connection.'),
-          ),
-        ),
-      ];
+  void _onNavTap(int navIndex) {
+    if (navIndex == 2) {
+      _openAddItem();
+      return;
     }
-    if (!snap.hasData) {
+    // Sell (2) is an action, so the two tabs after it shift down by one.
+    setState(() => _index = navIndex >= 3 ? navIndex - 1 : navIndex);
+  }
+
+  List<Widget> _tabs(String uid, List<Item> items, bool loading, bool error) {
+    if (_isSeller) {
       return [
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator()),
-          ),
+        const SellerDashboardScreen(embedded: true),
+        const MyListingsScreen(embedded: true),
+        ChatsScreen(uid: uid),
+        ProfileScreen(
+          embedded: true,
+          role: widget.role,
+          userName: _profile?.name,
+          username: _profile?.username,
+          email: _profile?.email,
         ),
       ];
     }
 
-    final all = snap.data!;
-    final items = _applyFilters(all);
-    if (items.isEmpty) {
-      return [
-        SliverToBoxAdapter(child: _emptyState(hasAnyItems: all.isNotEmpty)),
-      ];
-    }
-
+    final int cartCount = CartService.instance.count;
     return [
-      SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        sliver: SliverGrid(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            childAspectRatio: 0.62,
-          ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final item = items[index];
-              return ProductCard(
-                product: Product.fromItem(
-                  item,
-                  wishlisted: _wishlist.contains(item.id),
-                ),
-                onWishlistTap: () => _toggleWishlist(item.id),
-                onTap: () => _push(ProductDetailScreen(item: item)),
-              );
-            },
-            childCount: items.length,
-          ),
-        ),
+      DiscoverScreen(
+        items: items,
+        savedIds: _savedIds,
+        onToggleSaved: _toggleSaved,
+        ownerUid: uid,
+        cartCount: cartCount,
+        onOpenCart: _openCart,
+        onOpenBrowse: () => setState(() => _index = 1),
+        onPostItem: _openAddItem,
+        loading: loading,
+        error: error,
+      ),
+      BrowseScreen(
+        items: items,
+        savedIds: _savedIds,
+        onToggleSaved: _toggleSaved,
+        cartCount: cartCount,
+        onOpenCart: _openCart,
+        loading: loading,
+        error: error,
+      ),
+      ChatsScreen(uid: uid),
+      ProfileScreen(
+        embedded: true,
+        role: widget.role,
+        userName: _profile?.name,
+        username: _profile?.username,
+        email: _profile?.email,
       ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isSeller = _profile?.role == 'seller';
+    final uid = _uid ?? '';
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: StreamBuilder<List<Item>>(
-          stream: _itemsStream,
-          builder: (context, snap) {
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: _buildHeader()),
-                SliverToBoxAdapter(child: _buildSearch()),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                    child: Text('Categories',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                ),
-                SliverToBoxAdapter(child: _buildCategories()),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
-                    child: Text(_category ?? 'Fresh Finds',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                ),
-                ..._buildItemSlivers(snap),
-                const SliverToBoxAdapter(child: SizedBox(height: 90)),
-              ],
-            );
-          },
-        ),
+      backgroundColor: AppColors.canvas,
+      body: ListenableBuilder(
+        listenable: CartService.instance,
+        builder: (context, _) {
+          return StreamBuilder<List<Item>>(
+            stream: _itemsStream,
+            builder: (context, snap) {
+              final items = snap.data ?? const <Item>[];
+              final bool loading = !snap.hasData && !snap.hasError;
+              final bool error = snap.hasError;
+
+              return IndexedStack(
+                index: _index,
+                children: _tabs(uid, items, loading, error),
+              );
+            },
+          );
+        },
       ),
-      floatingActionButton: isSeller
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                      builder: (_) => const AddEditItemScreen()),
-                );
-              },
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Sell'),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _navIndex,
-        onDestinationSelected: _onNavTap,
-        backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.primary.withValues(alpha: 0.12),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home, color: AppColors.primary),
-              label: 'Home'),
-          NavigationDestination(
-              icon: Icon(Icons.shopping_cart_outlined), label: 'Cart'),
-          NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined), label: 'Orders'),
-          NavigationDestination(
-              icon: Icon(Icons.person_outline), label: 'Profile'),
-        ],
+      bottomNavigationBar: AppBottomNav(
+        index: _index >= 2 ? _index + 1 : _index,
+        onTap: _onNavTap,
+        role: widget.role,
       ),
     );
   }

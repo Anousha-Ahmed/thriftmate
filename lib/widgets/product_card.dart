@@ -1,8 +1,12 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../models/item.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
+import 'thrift_photo.dart';
 
 /// What a product card needs to display (built from an [Item]).
 class Product {
@@ -40,8 +44,7 @@ class Product {
   }
 }
 
-/// Reusable product card: photo, wishlist heart, condition badge, name,
-/// brand, size and price. Used on Home, Explore, Wishlist, etc.
+/// Editorial product card: tall photo, small-caps brand, price in forest.
 class ProductCard extends StatelessWidget {
   const ProductCard({
     super.key,
@@ -64,42 +67,20 @@ class ProductCard extends StatelessWidget {
         width: width,
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(
-              aspectRatio: 1,
+            Expanded(
               child: Stack(
                 children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
+                  Positioned.fill(
+                    child: ThriftPhoto(
+                      bytes: product.imageBytes,
+                      radius: 19,
                     ),
-                    child: product.imageBytes == null
-                        ? const Center(
-                            child: Icon(Icons.checkroom_rounded,
-                                color: AppColors.secondary, size: 36),
-                          )
-                        : ClipRRect(
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(16),
-                              topRight: Radius.circular(16),
-                            ),
-                            child: Image.memory(
-                              product.imageBytes!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              gaplessPlayback: true,
-                            ),
-                          ),
                   ),
                   Positioned(
                     top: 8,
@@ -108,15 +89,16 @@ class ProductCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.surface.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(7),
                       ),
                       child: Text(
-                        product.condition,
-                        style: const TextStyle(
-                          fontSize: 10.5,
+                        product.condition.toUpperCase(),
+                        style: GoogleFonts.dmSans(
+                          fontSize: 8.5,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
+                          letterSpacing: 0.9,
+                          color: AppColors.ink,
                         ),
                       ),
                     ),
@@ -129,7 +111,7 @@ class ProductCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
+                          color: AppColors.surface.withValues(alpha: 0.94),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -137,7 +119,9 @@ class ProductCard extends StatelessWidget {
                               ? Icons.favorite_rounded
                               : Icons.favorite_border_rounded,
                           size: 16,
-                          color: AppColors.darkAccent,
+                          color: product.isWishlisted
+                              ? AppColors.clay
+                              : AppColors.ink,
                         ),
                       ),
                     ),
@@ -146,33 +130,59 @@ class ProductCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 11),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    product.name,
+                    product.brand.isEmpty
+                        ? product.condition.toUpperCase()
+                        : product.brand.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${product.brand} · Size ${product.size}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    product.price,
-                    style: const TextStyle(
+                    style: GoogleFonts.dmSans(
+                      fontSize: 9,
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: AppColors.darkAccent,
+                      letterSpacing: 1.3,
+                      color: AppColors.muted,
                     ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      height: 1.25,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product.price,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                            color: AppColors.forest,
+                          ),
+                        ),
+                      ),
+                      if (product.size.isNotEmpty)
+                        Text(
+                          'Size ${product.size}',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 10,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),

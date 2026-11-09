@@ -7,8 +7,11 @@ import '../utils/format.dart';
 import 'add_edit_item_screen.dart';
 
 /// A seller's own listings, split into Active and Sold tabs.
+/// [embedded] drops the Scaffold/app bar for the seller shell.
 class MyListingsScreen extends StatefulWidget {
-  const MyListingsScreen({super.key});
+  const MyListingsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<MyListingsScreen> createState() => _MyListingsScreenState();
@@ -228,9 +231,67 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
               'Tap "Add item" to post your first thrift find.');
     }
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, widget.embedded ? 100 : 96),
       itemCount: items.length,
       itemBuilder: (context, index) => _card(items[index]),
+    );
+  }
+
+  Widget _header() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Your rack',
+                    style: Theme.of(context).textTheme.bodyMedium),
+                Text('My listings',
+                    style: Theme.of(context).textTheme.headlineLarge),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _addNew,
+            icon: const Icon(Icons.add_rounded, size: 19),
+            label: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TabBar _tabs(int active, int sold) {
+    return TabBar(
+      labelColor: AppColors.forest,
+      unselectedLabelColor: AppColors.muted,
+      indicatorColor: AppColors.forest,
+      tabs: [
+        Tab(text: 'Active ($active)'),
+        Tab(text: 'Sold ($sold)'),
+      ],
+    );
+  }
+
+  Widget _content(
+    List<Item> active,
+    List<Item> sold,
+    AsyncSnapshot<List<Item>> snap,
+  ) {
+    if (snap.hasError) {
+      return _empty('Could not load listings',
+          'Check your internet connection and try again.');
+    }
+    if (!snap.hasData) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return TabBarView(
+      children: [
+        _list(active, sold: false),
+        _list(sold, sold: true),
+      ],
     );
   }
 
@@ -242,38 +303,35 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         final items = snap.data ?? const <Item>[];
         final active = items.where((i) => !i.isSold).toList();
         final sold = items.where((i) => i.isSold).toList();
+        final content = _content(active, sold, snap);
+
+        if (widget.embedded) {
+          return DefaultTabController(
+            length: 2,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _header(),
+                  _tabs(active.length, sold.length),
+                  Expanded(child: content),
+                ],
+              ),
+            ),
+          );
+        }
 
         return DefaultTabController(
           length: 2,
           child: Scaffold(
-            backgroundColor: AppColors.background,
+            backgroundColor: AppColors.canvas,
             appBar: AppBar(
               title: const Text('My Listings'),
-              bottom: TabBar(
-                labelColor: AppColors.primary,
-                unselectedLabelColor: AppColors.textMuted,
-                indicatorColor: AppColors.primary,
-                tabs: [
-                  Tab(text: 'Active (${active.length})'),
-                  Tab(text: 'Sold (${sold.length})'),
-                ],
-              ),
+              bottom: _tabs(active.length, sold.length),
             ),
-            body: snap.hasError
-                ? _empty('Could not load listings',
-                    'Check your internet connection and try again.')
-                : !snap.hasData
-                    ? const Center(child: CircularProgressIndicator())
-                    : TabBarView(
-                        children: [
-                          _list(active, sold: false),
-                          _list(sold, sold: true),
-                        ],
-                      ),
+            body: content,
             floatingActionButton: FloatingActionButton.extended(
               onPressed: _addNew,
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
               label: const Text('Add item'),
             ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../models/item.dart';
 import '../models/shop_order.dart';
 import '../models/user_profile.dart';
@@ -11,30 +13,33 @@ import '../utils/role_router.dart';
 import 'add_edit_item_screen.dart';
 import 'home_screen.dart';
 import 'my_listings_screen.dart';
-import 'seller_orders_screen.dart';
 import 'profile_screen.dart';
+import 'seller_orders_screen.dart';
 
-/// What a seller sees after login: shop stats and quick actions.
+/// Seller mode home: shop stats, pending orders and quick actions.
+/// Used as a tab in the seller shell ([embedded]) or as its own page.
 class SellerDashboardScreen extends StatefulWidget {
-  const SellerDashboardScreen({super.key});
+  const SellerDashboardScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<SellerDashboardScreen> createState() => _SellerDashboardScreenState();
 }
 
 class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
-  late final Stream<List<Item>> _stream;
-  late final Stream<List<ShopOrder>> _ordersStream;
+  late final Stream<List<Item>> _items;
+  late final Stream<List<ShopOrder>> _orders;
   UserProfile? _profile;
 
   @override
   void initState() {
     super.initState();
     final uid = AuthService.instance.currentUser?.uid;
-    _stream = uid == null
+    _items = uid == null
         ? Stream<List<Item>>.value(const <Item>[])
         : ItemService.instance.sellerItems(uid);
-    _ordersStream = uid == null
+    _orders = uid == null
         ? Stream<List<ShopOrder>>.value(const <ShopOrder>[])
         : OrderService.instance.sellerOrders(uid);
     _loadProfile();
@@ -53,25 +58,235 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final body = StreamBuilder<List<Item>>(
+      stream: _items,
+      builder: (context, itemSnap) {
+        return StreamBuilder<List<ShopOrder>>(
+          stream: _orders,
+          builder: (context, orderSnap) {
+            if (itemSnap.hasError || orderSnap.hasError) {
+              return _error();
+            }
+            if (!itemSnap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final items = itemSnap.data!;
+            final orders = orderSnap.data ?? const <ShopOrder>[];
+            final active = items.where((i) => !i.isSold).toList();
+            final sold = items.where((i) => i.isSold).toList();
+            final pending = orders.where((o) => o.status == 'pending').length;
+            final earned = sold.fold<int>(0, (s, i) => s + i.sellerEarnings);
+
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                widget.embedded ? 14 : 4,
+                20,
+                widget.embedded ? 100 : 28,
+              ),
+              children: [
+                _header(),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _statCard(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Active listings',
+                        value: '${active.length}',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _statCard(
+                        icon: Icons.check_circle_outline,
+                        label: 'Items sold',
+                        value: '${sold.length}',
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _statCard(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Earned',
+                        value: formatPrice(earned),
+                        note: 'after ${(kPlatformFeeRate * 100).round()}% fee',
+                        color: AppColors.clay,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _statCard(
+                        icon: Icons.local_shipping_outlined,
+                        label: 'Pending orders',
+                        value: '$pending',
+                        note: pending == 0 ? 'nothing to ship' : 'to ship',
+                        color: AppColors.mustard,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  onPressed: () => _go(const AddEditItemScreen()),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Post a new find'),
+                ),
+                const SizedBox(height: 24),
+                Text('Quick actions',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.line),
+                  ),
+                  child: Column(
+                    children: [
+                      _tile(
+                        icon: Icons.local_shipping_outlined,
+                        title: 'Orders received',
+                        subtitle: pending == 0
+                            ? 'No pending orders'
+                            : '$pending ${pending == 1 ? 'order' : 'orders'} to ship',
+                        badge: pending,
+                        onTap: () => _go(const SellerOrdersScreen()),
+                      ),
+                      const Divider(height: 1),
+                      _tile(
+                        icon: Icons.list_alt_outlined,
+                        title: 'My listings',
+                        subtitle: 'Edit, delete or mark items as sold',
+                        onTap: () => _go(const MyListingsScreen()),
+                      ),
+                      const Divider(height: 1),
+                      _tile(
+                        icon: Icons.explore_outlined,
+                        title: 'Browse marketplace',
+                        subtitle: 'See what other sellers are listing',
+                        onTap: () => _go(const HomeScreen()),
+                      ),
+                      const Divider(height: 1),
+                      _tile(
+                        icon: Icons.shopping_bag_outlined,
+                        title: 'Switch to buying',
+                        subtitle: 'Shop as a buyer with this same account',
+                        onTap: () => switchMode(context, 'buyer'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Text('Recent listings',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const Spacer(),
+                    if (items.isNotEmpty)
+                      TextButton(
+                        onPressed: () => _go(const MyListingsScreen()),
+                        child: const Text('See all'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _recent(items),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (widget.embedded) {
+      return SafeArea(bottom: false, child: body);
+    }
+    return Scaffold(
+      backgroundColor: AppColors.canvas,
+      appBar: AppBar(
+        title: const Text('Seller dashboard'),
+        actions: [
+          IconButton(
+            tooltip: 'Profile',
+            onPressed: () => _go(const ProfileScreen(role: 'seller')),
+            icon: const Icon(Icons.person_outline_rounded),
+          ),
+        ],
+      ),
+      body: body,
+    );
+  }
+
+  Widget _header() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('Seller mode',
+                  style: Theme.of(context).textTheme.bodyMedium),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.sand,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'YOUR SHOP',
+                style: GoogleFonts.dmSans(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: AppColors.forest,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Text('Your shop', style: Theme.of(context).textTheme.headlineLarge),
+        const SizedBox(height: 4),
+        Text(
+          _profile == null || _profile!.firstName.isEmpty
+              ? 'Manage your rack, orders and buyers.'
+              : 'Hi ${_profile!.firstName}, manage your rack, orders and buyers.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+
   Widget _statCard({
     required IconData icon,
     required String label,
     required String value,
     String? note,
-    Color color = AppColors.primary,
+    Color color = AppColors.forest,
   }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
@@ -83,77 +298,118 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 20,
+            style: GoogleFonts.fraunces(
+              fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: AppColors.textDark,
+              color: AppColors.ink,
             ),
           ),
           const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 12.5, color: AppColors.textMuted)),
+          Text(
+            label,
+            style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.muted),
+          ),
           if (note != null)
-            Text(note,
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textMuted)),
+            Text(
+              note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.dmSans(
+                fontSize: 10.5,
+                color: AppColors.muted,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _actionTile({
+  Widget _tile({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    int badge = 0,
   }) {
     return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(title),
-      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: const BoxDecoration(
+          color: AppColors.sand,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 19, color: AppColors.forest),
+      ),
+      title: Text(
+        title,
+        style: GoogleFonts.dmSans(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
+        ),
+      ),
+      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+      trailing: badge > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.clay,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$badge',
+                style: GoogleFonts.dmSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            )
+          : const Icon(Icons.chevron_right_rounded,
+              size: 20, color: AppColors.muted),
       onTap: onTap,
     );
   }
 
-  Widget _ordersTile() {
-    return StreamBuilder<List<ShopOrder>>(
-      stream: _ordersStream,
-      builder: (context, snap) {
-        final pending =
-            (snap.data ?? const <ShopOrder>[]).where((o) => o.status == 'pending').length;
-        return ListTile(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          leading:
-              const Icon(Icons.local_shipping_outlined, color: AppColors.primary),
-          title: const Text('Orders received'),
-          subtitle: Text(
-            pending == 0
-                ? 'No pending orders'
-                : '$pending pending ${pending == 1 ? 'order' : 'orders'} to ship',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          trailing: pending == 0
-              ? const Icon(Icons.chevron_right, color: AppColors.textMuted)
-              : Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkAccent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text('$pending',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700)),
-                ),
-          onTap: () => _go(const SellerOrdersScreen()),
-        );
-      },
+  Widget _recent(List<Item> items) {
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.storefront_outlined,
+                size: 34, color: AppColors.muted),
+            const SizedBox(height: 8),
+            Text('No listings yet',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Post your first thrift find to start selling.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [for (final i in items.take(3)) _recentRow(i)],
+      ),
     );
   }
 
@@ -165,215 +421,72 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         borderRadius: BorderRadius.circular(10),
         child: item.coverBytes == null
             ? Container(
-                width: 48,
-                height: 48,
-                color: AppColors.background,
+                width: 46,
+                height: 46,
+                color: AppColors.sand,
                 child: const Icon(Icons.checkroom_rounded,
-                    color: AppColors.secondary),
+                    color: AppColors.muted, size: 20),
               )
             : Image.memory(item.coverBytes!,
-                width: 48, height: 48, fit: BoxFit.cover),
+                width: 46, height: 46, fit: BoxFit.cover),
       ),
-      title: Text(item.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(formatPrice(item.price),
-          style: const TextStyle(
-              color: AppColors.darkAccent, fontWeight: FontWeight.w600)),
+      title: Text(
+        item.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.dmSans(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
+        ),
+      ),
+      subtitle: Text(
+        '${item.views} views · ${formatPrice(item.price)}',
+        style: GoogleFonts.dmSans(fontSize: 11.5, color: AppColors.muted),
+      ),
       trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
         decoration: BoxDecoration(
           color: item.isSold
-              ? AppColors.accent.withValues(alpha: 0.5)
-              : const Color(0xFF2E9E5B).withValues(alpha: 0.12),
+              ? AppColors.sand
+              : AppColors.success.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           item.isSold ? 'Sold' : 'Active',
-          style: TextStyle(
-            fontSize: 11.5,
+          style: GoogleFonts.dmSans(
+            fontSize: 10.5,
             fontWeight: FontWeight.w700,
-            color: item.isSold
-                ? AppColors.textDark
-                : const Color(0xFF2E9E5B),
+            color: item.isSold ? AppColors.muted : AppColors.success,
           ),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final percent = (kPlatformFeeRate * 100).round();
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Seller dashboard'),
-        actions: [
-          IconButton(
-            tooltip: 'Profile',
-            onPressed: () => _go(const ProfileScreen()),
-            icon: const Icon(Icons.person_outline),
-          ),
-        ],
-      ),
-      body: StreamBuilder<List<Item>>(
-        stream: _stream,
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return const Center(
-                child: Text('Could not load your shop. Check your internet.'));
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final items = snap.data!;
-          final active = items.where((i) => !i.isSold).toList();
-          final sold = items.where((i) => i.isSold).toList();
-          final earned = sold.fold<int>(0, (s, i) => s + i.sellerEarnings);
-          final potential =
-              active.fold<int>(0, (s, i) => s + i.sellerEarnings);
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-            children: [
-              Text(
-                _profile == null
-                    ? 'Welcome 👋'
-                    : 'Hi, ${_profile!.firstName} 👋',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 2),
-              Text('Your shop at a glance',
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 18),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _statCard(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Active listings',
-                      value: '${active.length}',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _statCard(
-                      icon: Icons.check_circle_outline,
-                      label: 'Items sold',
-                      value: '${sold.length}',
-                      color: const Color(0xFF2E9E5B),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _statCard(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Earned',
-                      value: formatPrice(earned),
-                      note: 'after $percent% fee',
-                      color: AppColors.darkAccent,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _statCard(
-                      icon: Icons.trending_up_rounded,
-                      label: 'Potential',
-                      value: formatPrice(potential),
-                      note: 'if active items sell',
-                      color: AppColors.secondary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              ElevatedButton.icon(
-                onPressed: () => _go(const AddEditItemScreen()),
-                icon: const Icon(Icons.add),
-                label: const Text('Add new item'),
-              ),
-              const SizedBox(height: 24),
-
-              Text('Recent listings',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: items.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          children: [
-                            const Icon(Icons.storefront_outlined,
-                                size: 36, color: AppColors.secondary),
-                            const SizedBox(height: 8),
-                            Text('No listings yet',
-                                style:
-                                    Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 4),
-                            Text('Post your first thrift find to start selling.',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodyMedium),
-                          ],
-                        ),
-                      )
-                    : Column(
-                        children: [for (final i in items.take(3)) _recentRow(i)],
-                      ),
-              ),
-              const SizedBox(height: 24),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
-                    _ordersTile(),
-                    const Divider(height: 1, color: AppColors.border),
-                    _actionTile(
-                      icon: Icons.list_alt_outlined,
-                      title: 'My Listings',
-                      subtitle: 'Edit, delete or mark items as sold',
-                      onTap: () => _go(const MyListingsScreen()),
-                    ),
-                    const Divider(height: 1, color: AppColors.border),
-                    _actionTile(
-                      icon: Icons.explore_outlined,
-                      title: 'Browse marketplace',
-                      subtitle: 'See what other sellers are listing',
-                      onTap: () => _go(const HomeScreen()),
-                    ),
-                    const Divider(height: 1, color: AppColors.border),
-                    _actionTile(
-                      icon: Icons.shopping_bag_outlined,
-                      title: 'Switch to buying',
-                      subtitle: 'Shop as a buyer with this same account',
-                      onTap: () => switchMode(context, 'buyer'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+  Widget _error() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 40, color: AppColors.muted),
+            const SizedBox(height: 12),
+            Text(
+              'Could not load your shop',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Check your internet connection and pull again.',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

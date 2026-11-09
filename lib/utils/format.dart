@@ -1,5 +1,5 @@
-/// 1200 -> "Rs. 1,200"
-String formatPrice(num value) {
+/// 1200 -> "1,200"
+String formatNumber(num value) {
   final digits = value.round().toString();
   final buffer = StringBuffer();
   for (var i = 0; i < digits.length; i++) {
@@ -7,8 +7,11 @@ String formatPrice(num value) {
     buffer.write(digits[i]);
     if (remaining > 1 && remaining % 3 == 1) buffer.write(',');
   }
-  return 'Rs. ${buffer.toString()}';
+  return buffer.toString();
 }
+
+/// 1200 -> "Rs. 1,200"
+String formatPrice(num value) => 'Rs. ${formatNumber(value)}';
 
 /// 2026-11-05 15:45 -> "5 Nov 2026, 3:45 PM"
 String formatDateTime(DateTime date) {

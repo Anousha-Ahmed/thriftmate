@@ -42,10 +42,13 @@ class OrderService {
   /// Places one order per seller and marks every purchased item as sold,
   /// all in a single transaction: either everything succeeds or nothing
   /// changes (so two buyers can never get the same item).
+  ///
+  /// [priceOverrides] lets an accepted offer change the price for that item.
   Future<List<String>> placeOrder({
     required UserProfile buyer,
     required List<Item> items,
     required ShippingAddress shipping,
+    Map<String, int> priceOverrides = const {},
   }) async {
     if (items.isEmpty) throw const OrderException('Your cart is empty.');
 
@@ -74,7 +77,8 @@ class OrderService {
       for (final entry in bySeller.entries) {
         final sellerItems = entry.value;
         final first = sellerItems.first;
-        final subtotal = sellerItems.fold<int>(0, (s, i) => s + i.price);
+        final subtotal = sellerItems.fold<int>(
+            0, (s, i) => s + (priceOverrides[i.id] ?? i.price));
         final orderRef = _db.collection('orders').doc();
 
         tx.set(orderRef, {
@@ -90,7 +94,7 @@ class OrderService {
                     name: i.name,
                     brand: i.brand,
                     size: i.size,
-                    price: i.price,
+                    price: priceOverrides[i.id] ?? i.price,
                   ).toMap())
               .toList(),
           'subtotal': subtotal,

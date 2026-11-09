@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
+
 import '../screens/home_screen.dart';
-import '../screens/seller_dashboard_screen.dart';
 import '../services/auth_service.dart';
 
-/// Where a user lands after login: sellers get their dashboard,
-/// buyers get the marketplace.
+/// Where a user lands after login. The shell changes with the mode:
+/// buyers get Discover/Browse, sellers get Shop/Listings.
 Widget homeForRole(String role) =>
-    role == 'seller' ? const SellerDashboardScreen() : const HomeScreen();
+    HomeScreen(role: role == 'seller' ? 'seller' : 'buyer');
 
 /// One account, two modes (like OLX: the same person can sell and buy).
-/// Saves the chosen mode and reopens the matching home screen.
+/// Saves the chosen mode and reopens the shell.
 Future<void> switchMode(BuildContext context, String newRole) async {
   final user = AuthService.instance.currentUser;
   if (user == null) return;

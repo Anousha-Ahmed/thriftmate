@@ -71,9 +71,12 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
           : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.g_mobiledata_rounded,
-                    size: 32, color: Color(0xFFEA4335)),
-                const SizedBox(width: 6),
+                Image.asset(
+                  'assets/icons/google_g.png',
+                  width: 21,
+                  height: 21,
+                ),
+                const SizedBox(width: 10),
                 Text(
                   widget.label,
                   style: const TextStyle(

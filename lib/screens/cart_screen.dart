@@ -4,6 +4,7 @@ import '../models/shop_order.dart';
 import '../services/cart_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
+import '../widgets/thrift_photo.dart';
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
@@ -15,50 +16,69 @@ class CartScreen extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: item.coverBytes == null
-                ? Container(
-                    width: 72,
-                    height: 72,
-                    color: AppColors.background,
-                    child: const Icon(Icons.checkroom_rounded,
-                        color: AppColors.secondary),
-                  )
-                : Image.memory(item.coverBytes!,
-                    width: 72, height: 72, fit: BoxFit.cover),
+          SizedBox(
+            width: 78,
+            height: 88,
+            child: ThriftPhoto(bytes: item.coverBytes, radius: 12),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14.5)),
-                const SizedBox(height: 2),
-                Text('${item.brand} · Size ${item.size}',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textMuted)),
+                Text(
+                  item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14.5,
+                    color: AppColors.textDark,
+                    height: 1.25,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(formatPrice(item.price),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.darkAccent)),
+                Text(
+                  [
+                    if (item.brand.isNotEmpty) item.brand,
+                    'Size ${item.size}',
+                    item.condition,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  formatPrice(item.price),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppColors.primary,
+                  ),
+                ),
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Remove',
-            onPressed: () => CartService.instance.remove(item.id),
-            icon: const Icon(Icons.delete_outline, color: AppColors.error),
+          Column(
+            children: [
+              IconButton(
+                tooltip: 'Remove from cart',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => CartService.instance.remove(item.id),
+                icon: const Icon(Icons.close_rounded,
+                    size: 20, color: AppColors.textMuted),
+              ),
+            ],
           ),
         ],
       ),
@@ -67,7 +87,7 @@ class CartScreen extends StatelessWidget {
 
   Widget _summaryLine(String label, String value, {bool bold = false}) {
     final style = TextStyle(
-      fontSize: bold ? 16 : 14,
+      fontSize: bold ? 17 : 14,
       fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
       color: bold ? AppColors.textDark : AppColors.textMuted,
     );
@@ -80,40 +100,55 @@ class CartScreen extends StatelessWidget {
     );
   }
 
+  Widget _empty(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                color: AppColors.sand,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.border),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.shopping_bag_outlined,
+                  size: 40, color: AppColors.primary),
+            ),
+            const SizedBox(height: 18),
+            Text('Your cart is empty',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Swipe through Discover or browse the closet —\nadd the pieces you love here.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Keep browsing'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('My Cart')),
+      appBar: AppBar(title: const Text('My cart')),
       body: ListenableBuilder(
         listenable: CartService.instance,
         builder: (context, _) {
           final items = CartService.instance.items;
-          if (items.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.shopping_cart_outlined,
-                        size: 48, color: AppColors.secondary),
-                    const SizedBox(height: 12),
-                    Text('Your cart is empty',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 6),
-                    Text('Found something you like? Add it here.',
-                        style: Theme.of(context).textTheme.bodyMedium),
-                    const SizedBox(height: 18),
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Browse items'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
+          if (items.isEmpty) return _empty(context);
 
           final subtotal = CartService.instance.subtotal;
           final delivery = deliveryFeeFor(items);
@@ -122,12 +157,23 @@ class CartScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  children: [for (final i in items) _row(context, i)],
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  children: [
+                    Text(
+                      '${items.length} ${items.length == 1 ? 'piece' : 'pieces'} · one of a kind',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        letterSpacing: 0.6,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    for (final i in items) _row(context, i),
+                  ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 decoration: const BoxDecoration(
                   color: AppColors.surface,
                   border: Border(top: BorderSide(color: AppColors.border)),
@@ -139,10 +185,10 @@ class CartScreen extends StatelessWidget {
                     children: [
                       _summaryLine('Subtotal', formatPrice(subtotal)),
                       _summaryLine('Delivery', formatPrice(delivery)),
-                      const Divider(color: AppColors.border),
+                      const Divider(height: 20, color: AppColors.border),
                       _summaryLine('Total', formatPrice(subtotal + delivery),
                           bold: true),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () {
                           Navigator.of(context).push(MaterialPageRoute(
@@ -150,6 +196,12 @@ class CartScreen extends StatelessWidget {
                           ));
                         },
                         child: const Text('Checkout'),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cash on delivery · pay when it arrives',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textMuted),
                       ),
                     ],
                   ),

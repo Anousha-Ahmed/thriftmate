@@ -15,9 +15,16 @@ const List<String> kCities = [
 ];
 
 class CheckoutScreen extends StatefulWidget {
-  const CheckoutScreen({super.key, required this.items});
+  const CheckoutScreen({
+    super.key,
+    required this.items,
+    this.priceOverrides = const {},
+  });
 
   final List<Item> items;
+
+  /// itemId -> agreed offer price. Empty for a normal checkout.
+  final Map<String, int> priceOverrides;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -83,6 +90,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderIds = await OrderService.instance.placeOrder(
         buyer: profile,
         items: widget.items,
+        priceOverrides: widget.priceOverrides,
         shipping: ShippingAddress(
           name: _nameController.text.trim(),
           phone: _normalizedPhone(),
@@ -128,9 +136,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  int _priceFor(Item item) => widget.priceOverrides[item.id] ?? item.price;
+
   @override
   Widget build(BuildContext context) {
-    final subtotal = widget.items.fold<int>(0, (s, i) => s + i.price);
+    final subtotal =
+        widget.items.fold<int>(0, (s, i) => s + _priceFor(i));
     final delivery = deliveryFeeFor(widget.items);
 
     return Scaffold(
@@ -250,7 +261,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: Column(
                     children: [
                       for (final item in widget.items)
-                        _summaryLine(item.name, formatPrice(item.price)),
+                        _summaryLine(
+                          widget.priceOverrides.containsKey(item.id)
+                              ? '${item.name} · offer price'
+                              : item.name,
+                          formatPrice(_priceFor(item)),
+                        ),
                       const Divider(color: AppColors.border),
                       _summaryLine('Subtotal', formatPrice(subtotal)),
                       _summaryLine('Delivery', formatPrice(delivery)),
