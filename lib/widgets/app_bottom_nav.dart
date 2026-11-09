@@ -38,26 +38,28 @@ class AppBottomNav extends StatelessWidget {
         child: SizedBox(
           height: 74,
           child: Row(
-            children: [
-              _tab(
-                context,
-                0,
-                _selling ? Icons.storefront_outlined : Icons.auto_awesome_outlined,
-                _selling ? Icons.storefront : Icons.auto_awesome,
-                _selling ? 'Shop' : 'Discover',
-              ),
-              _tab(
-                context,
-                1,
-                _selling ? Icons.inventory_2_outlined : Icons.grid_view_outlined,
-                _selling ? Icons.inventory_2 : Icons.grid_view,
-                _selling ? 'Listings' : 'Browse',
-              ),
-              _sellTab(context),
-              _tab(context, 3, Icons.forum_outlined, Icons.forum, 'Chats'),
-              _tab(context, 4, Icons.person_outline_rounded,
-                  Icons.person_rounded, 'Profile'),
-            ],
+            children: _selling
+                ? [
+                    _tab(context, 0, Icons.storefront_outlined,
+                        Icons.storefront, 'Shop'),
+                    _tab(context, 1, Icons.inventory_2_outlined,
+                        Icons.inventory_2, 'Listings'),
+                    _sellTab(context),
+                    _tab(context, 3, Icons.forum_outlined, Icons.forum,
+                        'Chats'),
+                    _tab(context, 4, Icons.person_outline_rounded,
+                        Icons.person_rounded, 'Profile'),
+                  ]
+                : [
+                    _tab(context, 0, Icons.auto_awesome_outlined,
+                        Icons.auto_awesome, 'Discover'),
+                    _tab(context, 1, Icons.grid_view_outlined,
+                        Icons.grid_view, 'Browse'),
+                    _tab(context, 2, Icons.forum_outlined, Icons.forum,
+                        'Chats'),
+                    _tab(context, 3, Icons.person_outline_rounded,
+                        Icons.person_rounded, 'Profile'),
+                  ],
           ),
         ),
       ),

@@ -298,18 +298,28 @@ void main() {
       final result = filterBrowseItems(items, category: 'Tops');
       expect(result.map((i) => i.id), ['tops']);
     });
+
+    test('own listings stay in the buyer marketplace', () {
+      final items = [
+        _item(id: 'mine', sellerId: 'me'),
+        _item(id: 'theirs', sellerId: 'seller-1'),
+      ];
+
+      final result = filterBrowseItems(items);
+      expect(result.map((i) => i.id), ['mine', 'theirs']);
+    });
   });
 
   group('Discover deck', () {
-    test('hides sold pieces and your own listings', () {
+    test('hides sold pieces but keeps your own listings', () {
       final items = [
         _item(id: 'other', sellerId: 'seller-2'),
         _item(id: 'mine', sellerId: 'me'),
         _item(id: 'sold', sellerId: 'seller-2', status: 'sold'),
       ];
 
-      final deck = visibleDiscoverItems(items, ownerUid: 'me');
-      expect(deck.map((i) => i.id), ['other']);
+      final deck = visibleDiscoverItems(items);
+      expect(deck.map((i) => i.id), ['other', 'mine']);
     });
 
     test('applies category and condition filters together', () {
@@ -321,7 +331,6 @@ void main() {
 
       final deck = visibleDiscoverItems(
         items,
-        ownerUid: 'me',
         category: 'Outerwear',
         condition: 'Good',
       );
@@ -334,7 +343,7 @@ void main() {
         _item(id: 'b', sellerId: 's2'),
       ];
 
-      expect(visibleDiscoverItems(items, ownerUid: 'me'), hasLength(2));
+      expect(visibleDiscoverItems(items), hasLength(2));
     });
   });
 }

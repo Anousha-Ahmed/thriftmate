@@ -26,7 +26,7 @@ class ChatsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Negotiations', style: Theme.of(context).textTheme.bodyMedium),
+                Text('Messages', style: Theme.of(context).textTheme.bodyMedium),
                 Text('Chats', style: Theme.of(context).textTheme.headlineLarge),
               ],
             ),
@@ -52,7 +52,7 @@ class ChatsScreen extends StatelessWidget {
                   return _state(
                     context,
                     icon: Icons.chat_bubble_outline_rounded,
-                    title: 'No offers yet',
+                    title: 'No conversations yet',
                     message:
                         'Open any piece and tap "Chat" or "Offer" to start a conversation. Your threads will live here.',
                   );

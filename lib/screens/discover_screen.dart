@@ -8,17 +8,15 @@ import '../widgets/thrift_photo.dart';
 import '../utils/format.dart';
 import 'product_detail_screen.dart';
 
-/// Items that can land on the swipe deck: live pieces from other sellers,
+/// Items that can land on the swipe deck: every live piece,
 /// optionally narrowed by category and condition.
 List<Item> visibleDiscoverItems(
   List<Item> items, {
-  String? ownerUid,
   String? category,
   String? condition,
 }) {
   return items.where((i) {
     if (i.isSold) return false;
-    if (ownerUid != null && i.sellerId == ownerUid) return false;
     if (category != null && i.category != category) return false;
     if (condition != null && i.condition != condition) return false;
     return true;
@@ -33,11 +31,10 @@ class DiscoverScreen extends StatefulWidget {
     required this.items,
     required this.savedIds,
     required this.onToggleSaved,
-    required this.ownerUid,
     required this.cartCount,
     required this.onOpenCart,
     required this.onOpenBrowse,
-    this.onPostItem,
+    this.ownerUid,
     this.loading = false,
     this.error = false,
   });
@@ -49,7 +46,6 @@ class DiscoverScreen extends StatefulWidget {
   final int cartCount;
   final VoidCallback onOpenCart;
   final VoidCallback onOpenBrowse;
-  final VoidCallback? onPostItem;
   final bool loading;
   final bool error;
 
@@ -99,7 +95,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   List<Item> get _visible => visibleDiscoverItems(
         widget.items,
-        ownerUid: widget.ownerUid,
         category: _category,
         condition: _condition,
       );
@@ -208,8 +203,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             Expanded(
               child: _state(
                 icon: Icons.cloud_off_rounded,
-                title: 'Could not load the drop',
-                message: 'Check your internet connection and pull again.',
+                title: 'Could not load finds',
+                message: 'Check your internet connection and try again.',
               ),
             )
           else if (items.isEmpty)
@@ -220,10 +215,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 icon: Icons.done_all_rounded,
                 title: "You're all caught up",
                 message:
-                    'You looked at every piece in this drop. Browse the racks or check back for new finds.',
+                    'You have seen every find here. New pieces show up as sellers post them.',
                 action: TextButton(
                   onPressed: widget.onOpenBrowse,
-                  child: const Text('Browse the racks'),
+                  child: const Text('Browse all finds'),
                 ),
               ),
             )
@@ -261,6 +256,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                             item: items[_index + depth],
                                             saved: widget.savedIds.contains(
                                                 items[_index + depth].id),
+                                            isOwn: widget.ownerUid != null &&
+                                                items[_index + depth].sellerId ==
+                                                    widget.ownerUid,
                                             showDetails: depth == 0,
                                             dragX: depth == 0 ? _drag.dx : 0,
                                             onTap: depth == 0
@@ -323,7 +321,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Today's drop",
+                    Text('Fresh finds',
                         style: Theme.of(context).textTheme.bodyMedium),
                     Text('Discover',
                         style: Theme.of(context).textTheme.headlineLarge),
@@ -341,8 +339,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           const SizedBox(height: 2),
           Text(
             count == 0
-                ? 'Swipe right to save, left to pass.'
-                : '$count ${count == 1 ? 'piece' : 'pieces'} · swipe right to save',
+                ? 'Fresh pieces from ThriftMate sellers.'
+                : '$count ${count == 1 ? 'find' : 'finds'} available · swipe right to save',
             style: GoogleFonts.dmSans(
               fontSize: 12.5,
               color: AppColors.muted,
@@ -503,11 +501,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   Widget _emptyDeck() {
     final bool filtered = _category != null || _condition != null;
-    final bool hasOtherSellers =
-        widget.items.any((i) => !i.isSold && i.sellerId != widget.ownerUid);
-    final bool onlyMine = widget.items.isNotEmpty && !hasOtherSellers;
 
-    if (filtered && !onlyMine) {
+    if (filtered) {
       return _state(
         icon: Icons.local_florist_outlined,
         title: 'No matches for those filters',
@@ -524,30 +519,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     }
 
     return _state(
-      icon: widget.items.isEmpty
-          ? Icons.local_florist_outlined
-          : Icons.storefront_outlined,
-      title: widget.items.isEmpty
-          ? 'No pieces on the rack yet'
-          : 'Only your listings are live',
-      message: widget.items.isEmpty
-          ? 'When sellers post, their finds land right here. Post the first find yourself.'
-          : 'Your own pieces stay off the swipe deck so buyers get first pick. Browse the racks or post another find.',
-      action: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 4,
-        children: [
-          TextButton(
-            onPressed: widget.onOpenBrowse,
-            child: const Text('Browse the racks'),
-          ),
-          if (widget.onPostItem != null)
-            TextButton(
-              onPressed: widget.onPostItem,
-              child: const Text('Post a find'),
-            ),
-        ],
-      ),
+      icon: Icons.local_florist_outlined,
+      title: 'No finds yet',
+      message:
+          'New pieces show up here as sellers list them. Check back soon.',
     );
   }
 
@@ -599,6 +574,7 @@ class _SwipeCard extends StatelessWidget {
     required this.saved,
     required this.showDetails,
     required this.dragX,
+    this.isOwn = false,
     this.onTap,
     this.onPanUpdate,
     this.onPanEnd,
@@ -606,6 +582,7 @@ class _SwipeCard extends StatelessWidget {
 
   final Item item;
   final bool saved;
+  final bool isOwn;
   final bool showDetails;
   final double dragX;
   final VoidCallback? onTap;
@@ -669,6 +646,36 @@ class _SwipeCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (isOwn)
+                  Positioned(
+                    top: 52,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.forest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.storefront_rounded,
+                              size: 11, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(
+                            'YOUR LISTING',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.3,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 Positioned(
                   top: 14,
                   right: 14,

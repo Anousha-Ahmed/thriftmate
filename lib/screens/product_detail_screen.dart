@@ -583,15 +583,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_isOwn) {
       return Container(
         padding: const EdgeInsets.all(14),
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: AppColors.sand,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Text(
-          'This is your listing — manage it from My Listings.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w600),
+        child: const Row(
+          children: [
+            Icon(Icons.storefront_rounded, size: 20, color: AppColors.forest),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Preview of your listing. Buyers see this page with Chat, Offer and Add to cart.',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
         ),
       );
     }

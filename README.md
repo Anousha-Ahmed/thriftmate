@@ -23,12 +23,12 @@ signature ideas:
 | Area | What it does |
 | --- | --- |
 | Onboarding & auth | Email/password, Google sign-in, password reset, unique usernames, profile completion, buyer/seller role. Auth code is unchanged from the original project. |
-| Discover | Swipe deck of other sellers' active listings with filters (category, condition), save/pass/undo, cart badge, and chat/offer shortcuts. Your own listings stay out of the deck. |
+| Discover | Swipe deck of active listings with filters (category, condition), save/pass/undo, cart badge, and chat/offer shortcuts. Your own pieces get a "Your listing" badge and open as a preview. |
 | Browse | Search, category chips, two-column grid, saved hearts, product detail. |
 | Offers & chat | Start a plain chat ("Chat") or send an offer, 5/10/15% quick amounts, counter-offers, accept/decline, live thread, deal banner and "Buy at Rs X". |
 | Cart & checkout | In-memory cart (items are one-of-a-kind), per-seller delivery fee, shipping address, cash on delivery. |
 | Orders | One order per seller created in a transaction, items marked sold atomically, buyer tracking timeline, seller shipping status. |
-| Profile | Listings / sold / saved counts, saved closet, rehoming count, seller dashboard entry, orders, reset password, logout. |
+| Profile | Buyer mode: orders / delivered / saved counts and saved closet. Seller mode adds listings / sold counts, rehoming count and shop tools. |
 | Seller tools | Seller mode shell (Shop / Listings / Chats / Profile), stats and pending orders, add/edit listings (up to 4 compressed photos stored as base64), orders received. |
 
 ## Running
@@ -36,7 +36,7 @@ signature ideas:
 ```bash
 flutter pub get
 flutter run -d chrome   # or an Android/iOS device
-flutter test            # 27 unit tests, no Firebase needed
+flutter test            # 28 unit tests, no Firebase needed
 flutter analyze
 ```
 
@@ -72,9 +72,11 @@ lib/
                    thrift photo, offer sheet, status chip, auth inputs
 ```
 
-Navigation is a single `HomeScreen` shell with a five-tab bottom bar
-(Discover · Browse · Sell · Chats · Profile). Sell opens the add-listing form;
-both roles land in the same shell and can switch mode from Profile.
+Navigation is a single `HomeScreen` shell with a role-aware bottom bar.
+Buyer mode has four tabs (Discover · Browse · Chats · Profile). Seller mode
+keeps a five-tab bar (Shop · Listings · Sell · Chats · Profile), where Sell
+opens the add-listing form. Both roles use the same shell and can switch mode
+from Profile.
 
 ## Design system
 

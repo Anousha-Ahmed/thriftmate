@@ -60,8 +60,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
     super.dispose();
   }
 
-  List<Item> get _filtered =>
-      filterBrowseItems(widget.items, category: _category, query: _query);
+  List<Item> get _filtered => filterBrowseItems(
+        widget.items,
+        category: _category,
+        query: _query,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +119,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('The racks', style: Theme.of(context).textTheme.bodyMedium),
+                Text('Marketplace',
+                    style: Theme.of(context).textTheme.bodyMedium),
                 Text('Browse',
                     style: Theme.of(context).textTheme.headlineLarge),
               ],
@@ -255,16 +259,28 @@ class _BrowseScreenState extends State<BrowseScreen> {
       ];
     }
     if (items.isEmpty) {
+      final bool filtered = _category != null || _query.isNotEmpty;
+
       return [
         SliverToBoxAdapter(
           child: _state(
-            icon: Icons.checkroom_rounded,
-            title: widget.items.isEmpty
-                ? 'The racks are empty'
-                : 'Nothing matches that',
-            message: widget.items.isEmpty
-                ? 'New thrift finds will appear here as sellers post them.'
-                : 'Try another category or keyword.',
+            icon: filtered ? Icons.search_off_rounded : Icons.checkroom_rounded,
+            title: filtered ? 'Nothing matches that' : 'No finds yet',
+            message: filtered
+                ? 'Try another category or keyword.'
+                : 'New pieces show up here as sellers list them. Check back soon.',
+            action: filtered
+                ? TextButton(
+                    onPressed: () {
+                      _search.clear();
+                      setState(() {
+                        _query = '';
+                        _category = null;
+                      });
+                    },
+                    child: const Text('Clear filters'),
+                  )
+                : null,
           ),
         ),
       ];
@@ -309,6 +325,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
     required IconData icon,
     required String title,
     required String message,
+    Widget? action,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 40, 20, 0),
@@ -333,6 +350,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          if (action != null) ...[
+            const SizedBox(height: 10),
+            action,
+          ],
         ],
       ),
     );

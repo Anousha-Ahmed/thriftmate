@@ -196,12 +196,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _identity(name, username, email),
                           const SizedBox(height: 20),
                           _stats(
-                            listings: active.length,
-                            sold: sold.length,
+                            first: _isSeller
+                                ? '${active.length}'
+                                : '${orders.length}',
+                            firstLabel: _isSeller ? 'Listings' : 'Orders',
+                            second:
+                                _isSeller ? '${sold.length}' : '$delivered',
+                            secondLabel: _isSeller ? 'Sold' : 'Delivered',
                             saved: savedIds.length,
                           ),
-                          const SizedBox(height: 16),
-                          _impact(rehomed: rehomed),
+                          if (_isSeller) ...[
+                            const SizedBox(height: 16),
+                            _impact(rehomed: rehomed),
+                          ],
                           const SizedBox(height: 24),
                           _sectionTitle('Your closet'),
                           const SizedBox(height: 10),
@@ -304,15 +311,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _stats({
-    required int listings,
-    required int sold,
+    required String first,
+    required String firstLabel,
+    required String second,
+    required String secondLabel,
     required int saved,
   }) {
     return Row(
       children: [
-        Expanded(child: _statCard('$listings', 'Listings')),
+        Expanded(child: _statCard(first, firstLabel)),
         const SizedBox(width: 10),
-        Expanded(child: _statCard('$sold', 'Sold')),
+        Expanded(child: _statCard(second, secondLabel)),
         const SizedBox(width: 10),
         Expanded(child: _statCard('$saved', 'Saved')),
       ],

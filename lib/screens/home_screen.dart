@@ -127,12 +127,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onNavTap(int navIndex) {
-    if (navIndex == 2) {
-      _openAddItem();
+    if (_isSeller) {
+      if (navIndex == 2) {
+        _openAddItem();
+        return;
+      }
+      // Sell (2) is an action, so the tabs after it shift down by one.
+      setState(() => _index = navIndex >= 3 ? navIndex - 1 : navIndex);
       return;
     }
-    // Sell (2) is an action, so the two tabs after it shift down by one.
-    setState(() => _index = navIndex >= 3 ? navIndex - 1 : navIndex);
+    setState(() => _index = navIndex);
   }
 
   List<Widget> _tabs(String uid, List<Item> items, bool loading, bool error) {
@@ -161,7 +165,6 @@ class _HomeScreenState extends State<HomeScreen> {
         cartCount: cartCount,
         onOpenCart: _openCart,
         onOpenBrowse: () => setState(() => _index = 1),
-        onPostItem: _openAddItem,
         loading: loading,
         error: error,
       ),
@@ -210,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       bottomNavigationBar: AppBottomNav(
-        index: _index >= 2 ? _index + 1 : _index,
+        index: _isSeller && _index >= 2 ? _index + 1 : _index,
         onTap: _onNavTap,
         role: widget.role,
       ),
