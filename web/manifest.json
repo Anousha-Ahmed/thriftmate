@@ -1,11 +1,11 @@
 {
-    "name": "thriftmate",
-    "short_name": "thriftmate",
+    "name": "ThriftMate",
+    "short_name": "ThriftMate",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1F3D2E",
+    "theme_color": "#1F3D2E",
+    "description": "Pre-loved clothing marketplace.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
