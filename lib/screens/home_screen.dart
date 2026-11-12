@@ -170,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       BrowseScreen(
         items: items,
+        ownerUid: uid,
         savedIds: _savedIds,
         onToggleSaved: _toggleSaved,
         cartCount: cartCount,

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/item.dart';
+import '../services/cart_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/notification_bell.dart';
 import '../widgets/price_tag.dart';
 import '../widgets/thrift_photo.dart';
 import '../utils/format.dart';
@@ -333,6 +335,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 onTap: _openFilters,
                 badge: filtered,
               ),
+              NotificationBell(uid: widget.ownerUid ?? ''),
               _cartButton(),
             ],
           ),
@@ -416,50 +419,84 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   Widget _controls(BuildContext context, Item item) {
     final bool saved = widget.savedIds.contains(item.id);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 14, 24, 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _roundButton(
-            icon: Icons.undo_rounded,
-            size: 46,
-            color: AppColors.ink,
-            background: AppColors.surface,
-            border: AppColors.line,
-            onTap: _history.isEmpty ? null : _undo,
-            tooltip: 'Undo',
+    return ListenableBuilder(
+      listenable: CartService.instance,
+      builder: (context, _) {
+        final bool inCart = CartService.instance.contains(item.id);
+        final bool isOwn =
+            widget.ownerUid != null && item.sellerId == widget.ownerUid;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _roundButton(
+                icon: Icons.undo_rounded,
+                size: 46,
+                color: AppColors.ink,
+                background: AppColors.surface,
+                border: AppColors.line,
+                onTap: _history.isEmpty ? null : _undo,
+                tooltip: 'Undo',
+              ),
+              _roundButton(
+                icon: Icons.close_rounded,
+                size: 58,
+                color: AppColors.ink,
+                background: AppColors.surface,
+                border: AppColors.line,
+                onTap: () => _flyOut(false),
+                tooltip: 'Pass',
+              ),
+              _roundButton(
+                icon: saved
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                size: 58,
+                color: Colors.white,
+                background: AppColors.clay,
+                border: AppColors.clay,
+                onTap: () => _flyOut(true),
+                tooltip: 'Save',
+              ),
+              _roundButton(
+                icon: inCart
+                    ? Icons.shopping_bag_rounded
+                    : Icons.add_shopping_cart_rounded,
+                size: 46,
+                color: inCart ? Colors.white : AppColors.ink,
+                background:
+                    inCart ? AppColors.forest : AppColors.surface,
+                border: inCart ? AppColors.forest : AppColors.line,
+                onTap: isOwn
+                    ? null
+                    : () {
+                        if (inCart) {
+                          widget.onOpenCart();
+                        } else {
+                          _addToCart(item);
+                        }
+                      },
+                tooltip: inCart ? 'In cart — open cart' : 'Add to cart',
+              ),
+            ],
           ),
-          _roundButton(
-            icon: Icons.close_rounded,
-            size: 58,
-            color: AppColors.ink,
-            background: AppColors.surface,
-            border: AppColors.line,
-            onTap: () => _flyOut(false),
-            tooltip: 'Pass',
-          ),
-          _roundButton(
-            icon: saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            size: 58,
-            color: Colors.white,
-            background: AppColors.clay,
-            border: AppColors.clay,
-            onTap: () => _flyOut(true),
-            tooltip: 'Save',
-          ),
-          _roundButton(
-            icon: Icons.open_in_full_rounded,
-            size: 46,
-            color: AppColors.ink,
-            background: AppColors.surface,
-            border: AppColors.line,
-            onTap: () => _openItem(item),
-            tooltip: 'Details',
-          ),
-        ],
-      ),
+        );
+      },
     );
+  }
+
+  void _addToCart(Item item) {
+    CartService.instance.add(item);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: const Text('Added to cart'),
+        action: SnackBarAction(
+          label: 'View cart',
+          onPressed: widget.onOpenCart,
+        ),
+      ));
   }
 
   Widget _roundButton({

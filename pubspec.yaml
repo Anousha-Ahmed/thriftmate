@@ -18,6 +18,15 @@ dependencies:
   image_picker: ^1.1.2
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.6
+  flutter_stripe: 14.1.0
+  cloud_functions: ^5.6.2
+  flutter_stripe_web: ^8.2.0
+
+# flutter_stripe_web 8.2.0 does not compile against stripe_platform_interface
+# 14.2.0 (non-exhaustive switch on PaymentIntentsFutureUsage.None); pin until
+# upstream ships a matching web release.
+dependency_overrides:
+  stripe_platform_interface: 14.1.0
 
 dev_dependencies:
   flutter_test:

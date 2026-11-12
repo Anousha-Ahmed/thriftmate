@@ -83,6 +83,9 @@ class ShopOrder {
     required this.deliveryFee,
     required this.status,
     required this.shipping,
+    this.paymentMethod = 'cod',
+    this.paymentStatus = 'due',
+    this.paymentIntentId,
     this.createdAt,
     this.shippedAt,
     this.deliveredAt,
@@ -99,9 +102,17 @@ class ShopOrder {
   final int deliveryFee;
   final String status; // pending, shipped, delivered
   final ShippingAddress shipping;
+  final String paymentMethod; // cod, card
+  final String paymentStatus; // due, paid
+  final String? paymentIntentId;
   final DateTime? createdAt;
   final DateTime? shippedAt;
   final DateTime? deliveredAt;
+
+  bool get paidByCard => paymentMethod == 'card';
+
+  String get paymentLabel =>
+      paidByCard ? 'Paid by card' : 'Cash on delivery';
 
   int get total => subtotal + deliveryFee;
   int get platformFee => (subtotal * kPlatformFeeRate).round();
@@ -134,6 +145,9 @@ class ShopOrder {
       status: (d['status'] ?? 'pending') as String,
       shipping: ShippingAddress.fromMap(
           Map<String, dynamic>.from((d['shipping'] ?? const {}) as Map)),
+      paymentMethod: (d['paymentMethod'] ?? 'cod') as String,
+      paymentStatus: (d['paymentStatus'] ?? 'due') as String,
+      paymentIntentId: d['paymentIntentId'] as String?,
       createdAt: _date(d['createdAt']),
       shippedAt: _date(d['shippedAt']),
       deliveredAt: _date(d['deliveredAt']),

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../config/stripe_config.dart';
 import '../models/item.dart';
 import '../models/shop_order.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
+import '../services/card_payment.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
+import '../services/payment_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import 'order_success_screen.dart';
@@ -38,6 +41,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   UserProfile? _profile;
   String? _city;
+  String _method = 'cod';
   bool _placing = false;
 
   @override
@@ -87,26 +91,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => _placing = true);
     try {
-      final orderIds = await OrderService.instance.placeOrder(
-        buyer: profile,
-        items: widget.items,
-        priceOverrides: widget.priceOverrides,
-        shipping: ShippingAddress(
-          name: _nameController.text.trim(),
-          phone: _normalizedPhone(),
-          city: _city!,
-          address: _addressController.text.trim(),
-        ),
-      );
+      String paymentMethod = 'cod';
+      String paymentStatus = 'due';
+      String? paymentIntentId;
+
+      if (_method == 'card') {
+        final session =
+            await PaymentService.instance.createCardSession(widget.items);
+        if (!mounted) return;
+        await presentCardPayment(context, session);
+        if (!mounted) return;
+        await PaymentService.instance.verifyCardPayment(session);
+        if (!mounted) return;
+        paymentMethod = 'card';
+        paymentStatus = 'paid';
+        paymentIntentId = session.paymentIntentId;
+      }
+
+      final List<String> orderIds;
+      try {
+        orderIds = await OrderService.instance.placeOrder(
+          buyer: profile,
+          items: widget.items,
+          priceOverrides: widget.priceOverrides,
+          paymentMethod: paymentMethod,
+          paymentStatus: paymentStatus,
+          paymentIntentId: paymentIntentId,
+          shipping: ShippingAddress(
+            name: _nameController.text.trim(),
+            phone: _normalizedPhone(),
+            city: _city!,
+            address: _addressController.text.trim(),
+          ),
+        );
+      } on OrderException catch (e) {
+        // Card already charged: never let this look like a plain failed order.
+        if (paymentIntentId != null) {
+          throw PaymentException(
+            '${e.message} Your card was charged (ref $paymentIntentId). '
+            'Keep this reference and contact support for a refund.',
+          );
+        }
+        rethrow;
+      }
       for (final item in widget.items) {
         CartService.instance.remove(item.id);
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-            builder: (_) => OrderSuccessScreen(orderIds: orderIds)),
+          builder: (_) => OrderSuccessScreen(
+            orderIds: orderIds,
+            paidByCard: paymentMethod == 'card',
+          ),
+        ),
         (route) => route.isFirst,
       );
+    } on PaymentException catch (e) {
+      _showMessage(e.message);
     } on OrderException catch (e) {
       _showMessage(e.message);
     } catch (_) {
@@ -137,6 +179,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   int _priceFor(Item item) => widget.priceOverrides[item.id] ?? item.price;
+
+  Widget _paymentOption({
+    required String value,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final bool selected = _method == value;
+    return GestureDetector(
+      onTap: _placing ? null : () => setState(() => _method = value),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                color: selected ? AppColors.primary : AppColors.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected ? AppColors.primary : AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -221,33 +316,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const SizedBox(height: 24),
 
                 _sectionTitle('Payment method'),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.primary, width: 1.4),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.payments_outlined, color: AppColors.primary),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Cash on delivery',
-                                style: TextStyle(fontWeight: FontWeight.w600)),
-                            Text('Pay when you receive your order',
-                                style: TextStyle(
-                                    fontSize: 12, color: AppColors.textMuted)),
-                          ],
-                        ),
-                      ),
-                      Icon(Icons.check_circle, color: AppColors.primary),
-                    ],
-                  ),
+                _paymentOption(
+                  value: 'cod',
+                  icon: Icons.payments_outlined,
+                  title: 'Cash on delivery',
+                  subtitle: 'Pay when you receive your order',
                 ),
+                if (stripeConfigured) ...[
+                  const SizedBox(height: 10),
+                  _paymentOption(
+                    value: 'card',
+                    icon: Icons.credit_card_rounded,
+                    title: 'Card payment',
+                    subtitle:
+                        'Visa / Mastercard · charged as ${usdLabelForPkr(subtotal + delivery)} via Stripe',
+                  ),
+                  if (_method == 'card')
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8, left: 4),
+                      child: Text(
+                        'Stripe test mode: use 4242 4242 4242 4242 with any future expiry and CVC.',
+                        style: TextStyle(
+                            fontSize: 11.5, color: AppColors.textMuted),
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 24),
 
                 _sectionTitle('Order summary'),
@@ -289,7 +382,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Place order'),
+                      : Text(_method == 'card'
+                          ? 'Pay & place order'
+                          : 'Place order'),
                 ),
               ],
             ),

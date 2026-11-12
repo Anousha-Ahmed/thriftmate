@@ -23,21 +23,28 @@ signature ideas:
 | Area | What it does |
 | --- | --- |
 | Onboarding & auth | Email/password, Google sign-in, password reset, unique usernames, profile completion, buyer/seller role. Auth code is unchanged from the original project. |
-| Discover | Swipe deck of active listings with filters (category, condition), save/pass/undo, cart badge, and chat/offer shortcuts. Your own pieces get a "Your listing" badge and open as a preview. |
-| Browse | Search, category chips, two-column grid, saved hearts, product detail. |
+| Discover | Swipe deck of active listings with filters (category, condition), save/pass/undo, cart badge, notification bell, and chat/offer shortcuts. Your own pieces get a "Your listing" badge and open as a preview. |
+| Browse | Search, category chips, two-column grid, saved hearts, product detail, plus a **Filter** sheet: sort (newest / price low→high / price high→low), size, condition, brand (only brands that actually have stock) and a PKR price range. |
 | Offers & chat | Start a plain chat ("Chat") or send an offer, 5/10/15% quick amounts, counter-offers, accept/decline, live thread, deal banner and "Buy at Rs X". |
-| Cart & checkout | In-memory cart (items are one-of-a-kind), per-seller delivery fee, shipping address, cash on delivery. |
-| Orders | One order per seller created in a transaction, items marked sold atomically, buyer tracking timeline, seller shipping status. |
+| Ratings & reviews | After delivery the buyer rates the seller 1–5 stars with an optional comment (one review per order). The seller's average stars and latest reviews appear on every item page, and the dashboard shows the live average. |
+| Notifications | In-app bell with unread badge. New order, shipping/delivery updates, new offer, accepted/declined offer, chat replies and new reviews each create a notification that deep-links to the order or chat. |
+| Cart & checkout | In-memory cart (items are one-of-a-kind), add-to-cart from Browse/Discover/detail, per-seller delivery fee, shipping address, cash on delivery, and card payment through Stripe when a publishable key is supplied. |
+| Orders | One order per seller created in a transaction, items marked sold atomically, buyer tracking timeline (with the review CTA), seller shipping status. |
 | Profile | Buyer mode: orders / delivered / saved counts and saved closet. Seller mode adds listings / sold counts, rehoming count and shop tools. |
-| Seller tools | Seller mode shell (Shop / Listings / Chats / Profile), stats and pending orders, add/edit listings (up to 4 compressed photos stored as base64), orders received. |
+| Seller tools | Seller mode shell (Shop / Listings / Chats / Profile), stats, **7-day sales chart**, average rating, pending orders, add/edit listings (up to 4 compressed photos stored as base64), orders received. |
 
 ## Running
 
 ```bash
 flutter pub get
 flutter run -d chrome   # or an Android/iOS device
-flutter test            # 28 unit tests, no Firebase needed
+flutter test            # 48 tests, no Firebase needed
 flutter analyze
+
+# With card payments enabled (see "Card payments (Stripe)"):
+flutter run --dart-define=STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+# or keep the key in a local, git-ignored .env file:
+flutter run --dart-define-from-file=.env
 ```
 
 Firebase project: `thriftmate-f93cd` (configured in `lib/firebase_options.dart`
@@ -61,15 +68,21 @@ app data (or browser storage) to watch the first-launch flow again.
 
 ```
 lib/
-  config/          app_config.dart (Google web client id)
-  models/          item, user_profile, shop_order, chat
-  services/        auth, item, order, cart, chat, saved
+  config/          app_config.dart (Google web client id),
+                   stripe_config.dart (publishable key, PKR→USD rate)
+  models/          item, user_profile, shop_order, chat, review,
+                   app_notification
+  services/        auth, item, order, cart, chat, saved, review,
+                   notification, payment_service + card_payment (Stripe)
   screens/         auth screens + shell + discover/browse/chats/thread +
-                   detail, cart, checkout, orders, seller screens
+                   detail, cart, checkout, orders, notifications,
+                   seller screens
   theme/           app_theme.dart (palette, type, component themes)
-  utils/           format, validators, role_router
+  utils/           format, validators, role_router, analytics
   widgets/         app_logo, bottom nav, product card, price tag,
-                   thrift photo, offer sheet, status chip, auth inputs
+                   thrift photo, offer sheet, status chip, auth inputs,
+                   star rating, sales chart, notification bell
+functions/         createPaymentIntent + verifyCardPayment (Node 20)
 ```
 
 Navigation is a single `HomeScreen` shell with a role-aware bottom bar.
@@ -125,8 +138,23 @@ orders/{orderId}                       # one per seller per checkout
   lines: [{itemId, name, brand, size, price}]
   subtotal, deliveryFee, status ('pending' | 'shipped' | 'delivered')
   shipping: {name, phone, city, address}
-  paymentMethod: 'cod'
+  paymentMethod: 'cod' | 'card'
+  paymentStatus: 'due' | 'paid'
+  paymentIntentId (card orders only)
   createdAt / shippedAt / deliveredAt
+
+reviews/{orderId}                      # one review per delivered order
+  orderId, sellerId, buyerId, buyerName
+  rating (1..5), text
+  createdAt
+
+notifications/{autoId}
+  userId                               # recipient
+  title, body
+  type: 'order' | 'chat' | 'offer' | 'review' | 'system'
+  read: boolean
+  orderId / chatId / itemId (deep links, optional)
+  createdAt
 
 chats/{itemId}_{buyerId}               # one thread per item + buyer
   itemId, itemName, itemBrand, itemSize, itemPrice
@@ -157,8 +185,9 @@ sorted on the client (`activeItems`, `sellerItems`, `buyerOrders`,
 ## Security rules
 
 If your current rules already cover `items`, `users`, `usernames` and
-`orders`, keep them and merge in the `chats` block below. The important
-requirements for the rest of the app are unchanged:
+`orders`, keep them and merge in the `reviews`, `notifications` and `chats`
+blocks below. The important requirements for the rest of the app are
+unchanged:
 
 - signed-in users can read active items and increment `items.views`;
 - sellers can create/update/delete their own listings;
@@ -208,6 +237,29 @@ service cloud.firestore {
         && resource.data.sellerId == request.auth.uid;
     }
 
+    match /reviews/{orderId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.buyerId == request.auth.uid
+        && get(/databases/$(database)/documents/orders/$(orderId))
+             .data.buyerId == request.auth.uid
+        && get(/databases/$(database)/documents/orders/$(orderId))
+             .data.status == 'delivered';
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn()
+        && resource.data.userId == request.auth.uid;
+      allow create: if signedIn();
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['read']);
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
     match /chats/{chatId} {
       allow read: if signedIn()
         && request.auth.uid in resource.data.participants;
@@ -235,18 +287,129 @@ service cloud.firestore {
 > and later offers update it. Orders are written inside a transaction together
 > with marking items sold, so two buyers can never purchase the same piece.
 
+## Card payments (Stripe)
+
+Card checkout is optional and stays hidden until a Stripe publishable key is
+passed at build time. Cash on delivery always works.
+
+**1. Get test keys**
+
+1. Create/sign in at <https://dashboard.stripe.com/register>.
+2. Keep the dashboard in **Test mode** (toggle at the top right).
+3. Open **Developers → API keys**.
+4. Copy **Publishable key** (`pk_test_...`) and **Secret key**
+   (`sk_test_...`, use "Reveal live key" only for real payments).
+
+**2. Run the app with the publishable key**
+
+```bash
+flutter run -d chrome \
+  --dart-define=STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here
+# Android/iOS behave the same
+flutter run --dart-define=STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here
+```
+
+**3. Deploy the payment functions (secret key stays on the server)**
+
+```bash
+firebase login
+firebase use thriftmate-f93cd
+cd functions && npm install && cd ..
+firebase functions:secrets:set STRIPE_SECRET_KEY   # paste sk_test_...
+firebase deploy --only functions
+```
+
+Cloud Functions need the Blaze (pay-as-you-go) plan; the free Spark plan
+cannot deploy them. Until the functions are deployed, choosing card shows
+"Card payments are not deployed yet."
+
+**4. Pay with a test card**
+
+`4242 4242 4242 4242`, any future expiry, any CVC, any postal code; the
+`4242` card succeeds without 3-D Secure.
+
+**How it works**
+
+- `createPaymentIntent` (callable) re-prices the cart from Firestore (accepted
+  offers included) and creates a PaymentIntent. The amount never comes from the
+  client.
+- Android/iOS show Stripe's native Payment Sheet; the web build opens a Payment
+  Element page (Payment Sheet is not available on web).
+- `verifyCardPayment` asks Stripe whether the intent really succeeded before
+  the order is written as `paymentStatus: 'paid'`.
+- Orders store `paymentMethod`, `paymentStatus` and `paymentIntentId`; buyer
+  tracking and seller earnings show the payment label.
+
+**Local card demo without the Blaze plan (emulator)**
+
+Cloud Functions and Secret Manager both require the Blaze plan (which needs a
+billing card). To demo card checkout without it, run the functions on the
+local emulator:
+
+1. Copy `functions/.env.example` to `functions/.env` and paste the Stripe
+   **test secret key** (`sk_test_...`). That file is git-ignored and is only
+   read locally.
+2. Keep this running from the project root:
+
+   ```bash
+   firebase emulators:start --only functions
+   ```
+
+3. In a second terminal, run the app against the emulator:
+
+   ```bash
+   flutter run -d chrome \
+     --dart-define-from-file=.env \
+     --dart-define=USE_FUNCTIONS_EMULATOR=true
+   ```
+
+4. Checkout → Card → test card `4242 4242 4242 4242` works as usual.
+
+`USE_FUNCTIONS_EMULATOR` defaults to false, so release builds keep calling the
+deployed backend. On a physical Android device run
+`adb reverse tcp:5001 tcp:5001` first.
+
+**Important limitations**
+
+- Stripe does not support Pakistan as a merchant country and does not support
+  PKR, so card amounts are charged in **USD at a fixed demo rate**
+  (`kPkrPerUsd = 280` in `lib/config/stripe_config.dart`; the Cloud Function
+  uses the same constant). This is test-mode only.
+- For a real launch in Pakistan use a local gateway (Safepay, PayFast,
+  JazzCash) instead of Stripe.
+- `flutter_stripe_web` 8.2.0 is pinned with `stripe_platform_interface` 14.1.0
+  because 14.2.0 broke its build; remove the override once a newer web release
+  lands.
+- The demo rules let a buyer create their own order document. For production,
+  create the order inside the Cloud Function (or from a payment webhook) so
+  `paymentStatus` can only be set by the server.
+
 ## Tests
 
-`test/widget_test.dart` contains pure unit tests (no Firebase required) for
+`test/widget_test.dart` contains 46 pure unit tests (no Firebase required) for
 money/number formatting, date formatting, per-seller delivery fees, cart
-behaviour, platform fees, order helpers, chat flags, browse/discover filters
-and the validators used by the auth screens.
+behaviour, platform fees, order helpers, payment labels, PKR→USD conversion,
+chat flags, browse/discover filters, browse filter/sort helpers, seller
+rating averages, the 7-day analytics grouping and the validators used by the
+auth screens.
+
+`test/browse_ui_test.dart` pumps the real Browse screen (no Firebase) and
+checks that the filter sheet narrows the grid by size and that price sorting
+reorders the results.
 
 ## Notes
 
 - Photos are stored as compressed base64 strings inside the item document
   (no Cloud Storage bucket required).
-- Payment is cash on delivery; `orders.paymentMethod` is `cod`.
+- Payment defaults to cash on delivery (`orders.paymentMethod` = `cod`);
+  card orders store `card` / `paid` plus the Stripe payment intent id.
 - The cart is intentionally in-memory because thrift listings have quantity 1.
 - The rehoming count on the profile is computed from real delivered orders and
   items marked sold.
+- Notifications are written best-effort (a failed notification never blocks an
+  order, message, offer or review). Deep links open the order timeline or the
+  chat thread directly.
+- Reviews are keyed by order id, so editing or deleting a rating is impossible
+  and a buyer cannot review the same order twice.
+- The 7-day chart uses order subtotals (delivery fees excluded) and is drawn
+  with a `CustomPainter` — no charting package added.

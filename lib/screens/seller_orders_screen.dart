@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/item.dart';
 import '../models/shop_order.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
@@ -41,6 +44,15 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
     setState(() => _updating.add(order.id));
     try {
       await OrderService.instance.updateStatus(order.id, next);
+      unawaited(NotificationService.instance.push(
+        userId: order.buyerId,
+        type: 'order',
+        title: next == 'shipped' ? 'Your order is on the way' : 'Order delivered',
+        body: next == 'shipped'
+            ? 'Order #${order.shortId} was marked as shipped by the seller.'
+            : 'Order #${order.shortId} arrived. Rate the seller when you get a chance.',
+        orderId: order.id,
+      ));
       _showMessage(next == 'shipped'
           ? 'Order marked as shipped'
           : 'Order marked as delivered');
@@ -143,7 +155,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            'You receive ${formatPrice(o.sellerEarnings)} after ${(kPlatformFeeRate * 100).round()}% fee · Cash on delivery',
+            'You receive ${formatPrice(o.sellerEarnings)} after ${(kPlatformFeeRate * 100).round()}% fee · ${o.paymentLabel}',
             style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
           if (o.status != 'delivered') ...[

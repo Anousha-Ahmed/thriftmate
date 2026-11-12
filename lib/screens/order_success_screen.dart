@@ -3,9 +3,14 @@ import '../theme/app_theme.dart';
 import 'my_orders_screen.dart';
 
 class OrderSuccessScreen extends StatelessWidget {
-  const OrderSuccessScreen({super.key, required this.orderIds});
+  const OrderSuccessScreen({
+    super.key,
+    required this.orderIds,
+    this.paidByCard = false,
+  });
 
   final List<String> orderIds;
+  final bool paidByCard;
 
   String _short(String id) =>
       '#${(id.length <= 6 ? id : id.substring(0, 6)).toUpperCase()}';
@@ -49,7 +54,9 @@ class OrderSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'The seller has been notified. Pay in cash when your order arrives.',
+                paidByCard
+                    ? 'Payment received. Your order is confirmed and the seller has been notified.'
+                    : 'The seller has been notified. Pay in cash when your order arrives.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),

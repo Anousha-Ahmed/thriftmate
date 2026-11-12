@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/stripe_config.dart';
 import '../models/item.dart';
 import '../models/shop_order.dart';
 import '../services/cart_service.dart';
@@ -198,9 +199,11 @@ class CartScreen extends StatelessWidget {
                         child: const Text('Checkout'),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Cash on delivery · pay when it arrives',
-                        style: TextStyle(
+                      Text(
+                        stripeConfigured
+                            ? 'Cash on delivery or card at checkout'
+                            : 'Cash on delivery at checkout',
+                        style: const TextStyle(
                             fontSize: 12, color: AppColors.textMuted),
                       ),
                     ],

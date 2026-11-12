@@ -2,14 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/item.dart';
+import '../models/review.dart';
 import '../models/shop_order.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../services/item_service.dart';
 import '../services/order_service.dart';
+import '../services/review_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/analytics.dart';
 import '../utils/format.dart';
 import '../utils/role_router.dart';
+import '../widgets/notification_bell.dart';
+import '../widgets/sales_chart.dart';
+import '../widgets/star_rating.dart';
 import 'add_edit_item_screen.dart';
 import 'home_screen.dart';
 import 'my_listings_screen.dart';
@@ -31,11 +37,13 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   late final Stream<List<Item>> _items;
   late final Stream<List<ShopOrder>> _orders;
   UserProfile? _profile;
+  String? _uid;
 
   @override
   void initState() {
     super.initState();
     final uid = AuthService.instance.currentUser?.uid;
+    _uid = uid;
     _items = uid == null
         ? Stream<List<Item>>.value(const <Item>[])
         : ItemService.instance.sellerItems(uid);
@@ -134,6 +142,17 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 18),
+                if (_uid == null)
+                  _analyticsCard(orders, const <Review>[])
+                else
+                  StreamBuilder<List<Review>>(
+                    stream: ReviewService.instance.sellerReviews(_uid!),
+                    builder: (context, reviewSnap) => _analyticsCard(
+                      orders,
+                      reviewSnap.data ?? const <Review>[],
+                    ),
+                  ),
                 const SizedBox(height: 18),
                 ElevatedButton.icon(
                   onPressed: () => _go(const AddEditItemScreen()),
@@ -252,6 +271,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                 ),
               ),
             ),
+            const SizedBox(width: 4),
+            NotificationBell(uid: _uid ?? ''),
           ],
         ),
         Text('Your shop', style: Theme.of(context).textTheme.headlineLarge),
@@ -371,6 +392,89 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           : const Icon(Icons.chevron_right_rounded,
               size: 20, color: AppColors.muted),
       onTap: onTap,
+    );
+  }
+
+  Widget _analyticsCard(List<ShopOrder> orders, List<Review> reviews) {
+    final days = last7DaysSales(orders);
+    final weekOrders = days.fold<int>(0, (sum, d) => sum + d.orders);
+    final weekRevenue = days.fold<int>(0, (sum, d) => sum + d.revenue);
+    final double average = averageRating(reviews);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Last 7 days',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$weekOrders ${weekOrders == 1 ? 'order' : 'orders'}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.forest,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${formatPrice(weekRevenue)} in sales',
+            style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: 14),
+          SalesChart(days: days),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.line),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (reviews.isEmpty) ...[
+                const Icon(Icons.star_border_rounded,
+                    size: 17, color: AppColors.muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'No ratings yet — delivered buyers can rate you.',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11.5,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ] else ...[
+                StarRating(rating: average, size: 15),
+                const SizedBox(width: 7),
+                Text(
+                  '${ratingLabel(average)} · ${reviews.length} ${reviews.length == 1 ? 'review' : 'reviews'}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 

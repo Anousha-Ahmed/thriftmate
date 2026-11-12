@@ -6,16 +6,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/item.dart';
+import '../models/review.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../services/cart_service.dart';
 import '../services/chat_service.dart';
 import '../services/item_service.dart';
+import '../services/notification_service.dart';
+import '../services/review_service.dart';
 import '../services/saved_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/offer_sheet.dart';
 import '../widgets/price_tag.dart';
+import '../widgets/star_rating.dart';
 import '../widgets/thrift_photo.dart';
 import 'cart_screen.dart';
 import 'chat_thread_screen.dart';
@@ -148,6 +152,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         amount: draft.amount,
         note: draft.note,
       );
+      unawaited(NotificationService.instance.push(
+        userId: _item.sellerId,
+        type: 'offer',
+        title: 'New offer',
+        body:
+            '${buyer.name} offered ${formatPrice(draft.amount)} for ${_item.name}',
+        chatId: chatId,
+        itemId: _item.id,
+      ));
       final thread = await ChatService.instance.getThread(chatId);
       if (!mounted) return;
       if (thread == null) {
@@ -405,7 +418,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 22),
           Text('Sold by', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 10),
-          _sellerCard(),
+          StreamBuilder<List<Review>>(
+            stream: ReviewService.instance.sellerReviews(_item.sellerId),
+            builder: (context, snap) {
+              final reviews = snap.data ?? const <Review>[];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sellerCard(
+                    average: averageRating(reviews),
+                    reviewCount: reviews.length,
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Reviews from buyers',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 10),
+                  _reviews(reviews),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 20),
           _sellerNote(),
         ],
@@ -480,7 +512,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _sellerCard() {
+  Widget _sellerCard({required double average, required int reviewCount}) {
     final name = _item.sellerName.isEmpty ? 'Seller' : _item.sellerName;
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
     return Container(
@@ -531,6 +563,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       color: AppColors.clay,
                     ),
                   ),
+                const SizedBox(height: 4),
+                if (reviewCount > 0)
+                  Row(
+                    children: [
+                      StarRating(rating: average, size: 13),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${ratingLabel(average)} · $reviewCount ${reviewCount == 1 ? 'review' : 'reviews'}',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: AppColors.muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    'New seller · no ratings yet',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -549,6 +605,101 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reviews(List<Review> reviews) {
+    if (reviews.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.star_border_rounded,
+                size: 22, color: AppColors.muted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No reviews yet. Ratings appear here once buyers receive their orders.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  color: AppColors.muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < reviews.length && i < 3; i++) ...[
+            if (i > 0) const Divider(height: 1, color: AppColors.line),
+            _reviewTile(reviews[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _reviewTile(Review review) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              StarRating(rating: review.rating.toDouble(), size: 14),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  review.buyerName.isEmpty ? 'Buyer' : review.buyerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+              if (review.createdAt != null)
+                Text(
+                  formatDateTime(review.createdAt!),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10.5,
+                    color: AppColors.muted,
+                  ),
+                ),
+            ],
+          ),
+          if (review.text.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              review.text,
+              style: GoogleFonts.dmSans(
+                fontSize: 12.5,
+                height: 1.45,
+                color: AppColors.ink,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -621,6 +772,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         return Row(
           children: [
             Expanded(
+              flex: 3,
               child: OutlinedButton.icon(
                 onPressed: _openingChat ? null : _openChat,
                 style: OutlinedButton.styleFrom(
@@ -638,6 +790,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(width: 8),
             Expanded(
+              flex: 3,
               child: OutlinedButton.icon(
                 onPressed: _sendingOffer ? null : _sendOffer,
                 style: OutlinedButton.styleFrom(
@@ -654,26 +807,41 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Tooltip(
-              message: inCart ? 'Go to cart' : 'Add to cart',
+            Expanded(
+              flex: 4,
               child: SizedBox(
-                width: 58,
                 height: 54,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(58, 54),
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   onPressed:
                       inCart ? () => _open(const CartScreen()) : _addToCart,
-                  child: Icon(
-                    inCart
-                        ? Icons.shopping_bag_rounded
-                        : Icons.add_shopping_cart_rounded,
-                    size: 21,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        inCart
+                            ? Icons.shopping_bag_rounded
+                            : Icons.add_shopping_cart_rounded,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          inCart ? 'In cart' : 'Add to cart',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

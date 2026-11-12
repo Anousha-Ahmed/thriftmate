@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,6 +9,7 @@ import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/item_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/offer_sheet.dart';
@@ -83,6 +86,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         senderName: _myName,
         text: value,
       );
+      unawaited(NotificationService.instance.push(
+        userId: thread.isBuyer(_uid) ? thread.sellerId : thread.buyerId,
+        type: 'chat',
+        title: 'New message',
+        body:
+            '$_myName: ${value.length > 90 ? '${value.substring(0, 90)}…' : value}',
+        chatId: thread.id,
+        itemId: thread.itemId,
+      ));
       _text.clear();
     } catch (_) {
       _showMessage('Message could not be sent. Try again.');
@@ -114,6 +126,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         amount: draft.amount,
         note: draft.note,
       );
+      unawaited(NotificationService.instance.push(
+        userId: thread.isSeller(_uid) ? thread.buyerId : thread.sellerId,
+        type: 'offer',
+        title: thread.isSeller(_uid) ? 'New counter offer' : 'New offer',
+        body:
+            '$_myName offered ${formatPrice(draft.amount)} · ${thread.itemName}',
+        chatId: thread.id,
+        itemId: thread.itemId,
+      ));
     } catch (_) {
       _showMessage('Offer could not be sent. Try again.');
     } finally {
@@ -136,6 +157,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         accept: accept,
         responderId: _uid,
       );
+      unawaited(NotificationService.instance.push(
+        userId: thread.isBuyer(_uid) ? thread.sellerId : thread.buyerId,
+        type: 'offer',
+        title: accept ? 'Offer accepted' : 'Offer declined',
+        body: '${thread.itemName} · ${formatPrice(message.amount ?? 0)}',
+        chatId: thread.id,
+        itemId: thread.itemId,
+      ));
     } catch (_) {
       _showMessage('Could not update the offer. Try again.');
     } finally {
@@ -464,7 +493,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Widget _bubble(ChatThread thread, ChatMessage message) {
     final bool mine = message.senderId == _uid;
-    final bool isSeller = thread.isSeller(_uid);
 
     if (message.isOffer) {
       return Align(
@@ -519,7 +547,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   ),
                 ),
               ],
-              if (isSeller && message.isPending) ...[
+              // The receiver answers: seller replies to buyer offers and
+              // buyer replies to seller counter offers.
+              if (!mine && message.isPending) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [

@@ -2,10 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:thriftmate/models/chat.dart';
 import 'package:thriftmate/models/item.dart';
+import 'package:thriftmate/models/review.dart';
 import 'package:thriftmate/models/shop_order.dart';
 import 'package:thriftmate/screens/browse_screen.dart';
 import 'package:thriftmate/screens/discover_screen.dart';
+import 'package:thriftmate/config/stripe_config.dart';
 import 'package:thriftmate/services/cart_service.dart';
+import 'package:thriftmate/utils/analytics.dart';
 import 'package:thriftmate/utils/format.dart';
 import 'package:thriftmate/utils/validators.dart';
 
@@ -17,6 +20,9 @@ Item _item({
   String category = 'Outerwear',
   String condition = 'Good',
   String status = 'active',
+  String brand = 'Levi\'s',
+  String size = 'M',
+  DateTime? createdAt,
 }) {
   return Item(
     id: id,
@@ -25,14 +31,15 @@ Item _item({
     sellerUsername: 'ayesha',
     name: name,
     category: category,
-    brand: 'Levi\'s',
-    size: 'M',
+    brand: brand,
+    size: size,
     condition: condition,
     price: price,
     description: 'Barely worn.',
     images: const [],
     status: status,
     views: 0,
+    createdAt: createdAt,
   );
 }
 
@@ -184,6 +191,55 @@ void main() {
       ]);
       expect(twoItems.itemsSummary, 'Jacket +1 more');
     });
+
+    test('cod orders default to cash on delivery', () {
+      expect(order(const []).paidByCard, isFalse);
+      expect(order(const []).paymentLabel, 'Cash on delivery');
+    });
+
+    test('card orders are labelled as paid', () {
+      const cardOrder = ShopOrder(
+        id: 'abcdef',
+        buyerId: 'buyer',
+        buyerName: 'Sara',
+        sellerId: 'seller',
+        sellerName: 'Ayesha',
+        sellerUsername: 'ayesha',
+        lines: [],
+        subtotal: 1000,
+        deliveryFee: 200,
+        status: 'pending',
+        shipping: ShippingAddress(
+          name: 'Sara',
+          phone: '03001234567',
+          city: 'Lahore',
+          address: 'Model Town',
+        ),
+        paymentMethod: 'card',
+        paymentStatus: 'paid',
+        paymentIntentId: 'pi_123',
+      );
+      expect(cardOrder.paidByCard, isTrue);
+      expect(cardOrder.paymentLabel, 'Paid by card');
+    });
+  });
+
+  group('Stripe amount conversion', () {
+    test('converts rupees to USD cents at the demo rate', () {
+      expect(usdCentsForPkr(280), 100);
+      expect(usdCentsForPkr(1400), 500);
+      expect(usdCentsForPkr(2800), 1000);
+    });
+
+    test('never charges below the 50 cent Stripe minimum', () {
+      expect(usdCentsForPkr(10), 50);
+      expect(usdCentsForPkr(0), 50);
+    });
+
+    test('formats the USD label shown at checkout', () {
+      expect(usdLabelForPkr(2800), '\$10.00');
+      expect(usdLabelForPkr(140), '\$0.50');
+    });
   });
 
   group('ChatMessage flags', () {
@@ -307,6 +363,201 @@ void main() {
 
       final result = filterBrowseItems(items);
       expect(result.map((i) => i.id), ['mine', 'theirs']);
+    });
+  });
+
+  group('Browse filters & sort', () {
+    test('size filter matches exact sizes only', () {
+      final items = [
+        _item(id: 's', size: 'S'),
+        _item(id: 'm', size: 'M'),
+        _item(id: 'l', size: 'L'),
+      ];
+
+      final result = filterBrowseItems(
+        items,
+        filters: const BrowseFilters(sizes: {'L'}),
+      );
+      expect(result.map((i) => i.id), ['l']);
+    });
+
+    test('groups combine with AND, values inside a group with OR', () {
+      final items = [
+        _item(id: 'good', condition: 'Good', brand: 'Levi\'s'),
+        _item(id: 'new', condition: 'Like New', brand: 'Levi\'s'),
+        _item(id: 'fair-zara', condition: 'Fair', brand: 'Zara'),
+        _item(id: 'good-zara', condition: 'Good', brand: 'Zara'),
+      ];
+
+      final result = filterBrowseItems(
+        items,
+        filters: const BrowseFilters(
+          conditions: {'Good', 'Like New'},
+          brands: {'Levi\'s'},
+        ),
+      );
+      expect(result.map((i) => i.id), ['good', 'new']);
+    });
+
+    test('price range keeps prices inside the bounds', () {
+      final items = [
+        _item(id: 'cheap', price: 500),
+        _item(id: 'mid', price: 1200),
+        _item(id: 'pricey', price: 4000),
+      ];
+
+      final result = filterBrowseItems(
+        items,
+        filters: const BrowseFilters(minPrice: 800, maxPrice: 2000),
+      );
+      expect(result.map((i) => i.id), ['mid']);
+    });
+
+    test('sorts by price in both directions', () {
+      final items = [
+        _item(id: 'mid', price: 1200),
+        _item(id: 'cheap', price: 400),
+        _item(id: 'pricey', price: 5000),
+      ];
+
+      expect(
+        filterBrowseItems(items, filters: const BrowseFilters(sort: BrowseSort.priceLow))
+            .map((i) => i.id),
+        ['cheap', 'mid', 'pricey'],
+      );
+      expect(
+        filterBrowseItems(items,
+                filters: const BrowseFilters(sort: BrowseSort.priceHigh))
+            .map((i) => i.id),
+        ['pricey', 'mid', 'cheap'],
+      );
+    });
+
+    test('newest sort puts the latest listing first and undated last', () {
+      final items = [
+        _item(id: 'old', createdAt: DateTime(2026, 10, 1)),
+        _item(id: 'undated'),
+        _item(id: 'fresh', createdAt: DateTime(2026, 11, 3)),
+      ];
+
+      final result = filterBrowseItems(items);
+      expect(result.map((i) => i.id), ['fresh', 'old', 'undated']);
+    });
+
+    test('sold pieces never show in browse', () {
+      final items = [
+        _item(id: 'live'),
+        _item(id: 'sold', status: 'sold'),
+      ];
+      expect(
+        filterBrowseItems(items, filters: const BrowseFilters(sizes: {'M'}))
+            .map((i) => i.id),
+        ['live'],
+      );
+    });
+
+    test('available brands are unique and alphabetical', () {
+      final items = [
+        _item(id: '1', brand: 'Zara'),
+        _item(id: '2', brand: 'Levi\'s'),
+        _item(id: '3', brand: 'Zara'),
+        _item(id: '4', brand: ''),
+        _item(id: '5', brand: 'Khaadi', status: 'sold'),
+      ];
+
+      expect(availableBrands(items), ['Levi\'s', 'Zara']);
+    });
+
+    test('price ceiling rounds up to the next 500', () {
+      expect(priceCeiling([_item(price: 1200)]), 1500);
+      expect(priceCeiling([_item(price: 4200)]), 4500);
+      expect(priceCeiling(const []), 5000);
+    });
+
+    test('active count reflects how many filters are set', () {
+      expect(BrowseFilters.none.isActive, isFalse);
+      expect(BrowseFilters.none.activeCount, 0);
+
+      const filters = BrowseFilters(
+        sizes: {'M', 'L'},
+        conditions: {'Good'},
+        minPrice: 500,
+        sort: BrowseSort.priceLow,
+      );
+      expect(filters.isActive, isTrue);
+      expect(filters.activeCount, 4);
+    });
+  });
+
+  group('Seller ratings', () {
+    Review review(int rating) => Review(
+          id: 'r$rating',
+          orderId: 'o$rating',
+          sellerId: 'seller',
+          buyerId: 'buyer',
+          buyerName: 'Sara',
+          rating: rating,
+          text: '',
+        );
+
+    test('averages only real ratings', () {
+      expect(averageRating(const <Review>[]), 0);
+      expect(averageRating([review(5), review(4)]), 4.5);
+      expect(averageRating([review(0), review(3)]), 3.0);
+    });
+
+    test('labels one decimal place', () {
+      expect(ratingLabel(4.75), '4.8');
+      expect(ratingLabel(5), '5.0');
+    });
+  });
+
+  group('Seller analytics', () {
+    ShopOrder order(DateTime? at, {int subtotal = 1000}) => ShopOrder(
+          id: 'order-${at?.millisecondsSinceEpoch}',
+          buyerId: 'buyer',
+          buyerName: 'Sara',
+          sellerId: 'seller',
+          sellerName: 'Ayesha',
+          sellerUsername: 'ayesha',
+          lines: const [],
+          subtotal: subtotal,
+          deliveryFee: 200,
+          status: 'delivered',
+          shipping: const ShippingAddress(
+            name: 'Sara',
+            phone: '03001234567',
+            city: 'Lahore',
+            address: 'Model Town',
+          ),
+          createdAt: at,
+        );
+
+    test('groups orders and revenue by calendar day', () {
+      final now = DateTime(2026, 11, 11);
+      final days = last7DaysSales([
+        order(DateTime(2026, 11, 11, 9)),
+        order(DateTime(2026, 11, 11, 20), subtotal: 500),
+        order(DateTime(2026, 11, 9), subtotal: 2000),
+        order(DateTime(2026, 10, 1), subtotal: 900),
+        order(null),
+      ], now: now);
+
+      expect(days, hasLength(7));
+      expect(days.first.day, DateTime(2026, 11, 5));
+      expect(days.last.orders, 2);
+      expect(days.last.revenue, 1500);
+      expect(days[4].revenue, 2000);
+      expect(days.fold<int>(0, (s, d) => s + d.orders), 3);
+    });
+
+    test('weekday labels line up with the dates', () {
+      final days = last7DaysSales(
+        const <ShopOrder>[],
+        now: DateTime(2026, 11, 11),
+      );
+      expect(days.first.weekdayShort, 'Thu');
+      expect(days.last.weekdayShort, 'Wed');
     });
   });
 

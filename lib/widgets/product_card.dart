@@ -51,12 +51,22 @@ class ProductCard extends StatelessWidget {
     required this.product,
     required this.onWishlistTap,
     this.onTap,
+    this.onAddToCart,
+    this.inCart = false,
+    this.isOwn = false,
     this.width,
   });
 
   final Product product;
   final VoidCallback onWishlistTap;
   final VoidCallback? onTap;
+
+  /// Shows an "Add to cart" button when provided.
+  final VoidCallback? onAddToCart;
+  final bool inCart;
+
+  /// Your own piece: buyers cannot add it to the cart, so it shows a label.
+  final bool isOwn;
   final double? width;
 
   @override
@@ -184,6 +194,64 @@ class ProductCard extends StatelessWidget {
                         ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (onAddToCart != null)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 30,
+                      child: ElevatedButton(
+                        onPressed: onAddToCart,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              inCart ? AppColors.forest : AppColors.surface,
+                          foregroundColor:
+                              inCart ? Colors.white : AppColors.forest,
+                          elevation: 0,
+                          padding: EdgeInsets.zero,
+                          side: BorderSide(
+                            color: inCart ? AppColors.forest : AppColors.line,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          textStyle: GoogleFonts.dmSans(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              inCart
+                                  ? Icons.shopping_bag_rounded
+                                  : Icons.add_shopping_cart_rounded,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(inCart ? 'In cart' : 'Add to cart'),
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (isOwn)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.sand,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'Your listing',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forest,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

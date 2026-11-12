@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/item.dart';
 import '../models/shop_order.dart';
 import '../models/user_profile.dart';
+import '../utils/format.dart';
+import 'notification_service.dart';
 
 class OrderException implements Exception {
   const OrderException(this.message);
@@ -49,6 +51,9 @@ class OrderService {
     required List<Item> items,
     required ShippingAddress shipping,
     Map<String, int> priceOverrides = const {},
+    String paymentMethod = 'cod',
+    String paymentStatus = 'due',
+    String? paymentIntentId,
   }) async {
     if (items.isEmpty) throw const OrderException('Your cart is empty.');
 
@@ -58,8 +63,10 @@ class OrderService {
     }
 
     final orderIds = <String>[];
+    final placed = <({String sellerId, String orderId, int total})>[];
     await _db.runTransaction((tx) async {
       orderIds.clear();
+      placed.clear();
 
       // 1) Read and verify every item first.
       for (final item in items) {
@@ -101,16 +108,36 @@ class OrderService {
           'deliveryFee': kDeliveryFee,
           'status': 'pending',
           'shipping': shipping.toMap(),
-          'paymentMethod': 'cod',
+          'paymentMethod': paymentMethod,
+          'paymentStatus': paymentStatus,
+          'paymentIntentId': ?paymentIntentId,
           'createdAt': FieldValue.serverTimestamp(),
         });
         orderIds.add(orderRef.id);
+        placed.add((
+          sellerId: entry.key,
+          orderId: orderRef.id,
+          total: subtotal + kDeliveryFee,
+        ));
 
         for (final i in sellerItems) {
           tx.update(_db.collection('items').doc(i.id), {'status': 'sold'});
         }
       }
     });
+
+    for (final p in placed) {
+      final shortId = p.orderId.length <= 6
+          ? p.orderId.toUpperCase()
+          : p.orderId.substring(0, 6).toUpperCase();
+      await NotificationService.instance.push(
+        userId: p.sellerId,
+        type: 'order',
+        title: 'New order received',
+        body: 'Order #$shortId · ${formatPrice(p.total)}',
+        orderId: p.orderId,
+      );
+    }
     return orderIds;
   }
 
