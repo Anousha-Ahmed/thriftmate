@@ -108,18 +108,18 @@ exports.createPaymentIntent = onCall(
       let intent;
       try {
         intent = await stripeClient().paymentIntents.create({
-          amount,
-          currency: CURRENCY,
-          payment_method_types: ['card'],
-          description: `ThriftMate order · ${itemIds.length} item(s)`,
-          metadata: {
-            uid,
-            itemIds: itemIds.join(','),
-            totalPkr: String(totalPkr),
-            subtotalPkr: String(subtotal),
-            deliveryFeePkr: String(deliveryFee),
-            platformFeePkr: String(Math.round(subtotal * PLATFORM_FEE_RATE)),
-          },
+        amount,
+        currency: CURRENCY,
+        payment_method_types: ['card'],
+        description: `ThriftMate order · ${itemIds.length} item(s)`,
+        metadata: {
+          uid,
+          itemIds: itemIds.join(','),
+          totalPkr: String(totalPkr),
+          subtotalPkr: String(subtotal),
+          deliveryFeePkr: String(deliveryFee),
+          platformFeePkr: String(Math.round(subtotal * PLATFORM_FEE_RATE)),
+        },
         });
       } catch (err) {
         if (err instanceof HttpsError) throw err;
@@ -142,7 +142,12 @@ exports.createPaymentIntent = onCall(
 
 /**
  * Called by the app after the card sheet closes so a forged "paid" flag never
- * reaches Firestore. Confirms the intent belongs to this buyer and succeeded.
+ * reaches Firestore. Confirms that the intent
+ *  - belongs to this buyer,
+ *  - succeeded,
+ *  - was created for exactly the items now being ordered (so a cheap payment
+ *    cannot be reused for an expensive order), and
+ *  - has not already been claimed for a different set of items.
  */
 exports.verifyCardPayment = onCall(
     { secrets: [STRIPE_SECRET_KEY] },
@@ -152,16 +157,23 @@ exports.verifyCardPayment = onCall(
             'unauthenticated', 'Please sign in again to confirm your payment.');
       }
 
-      const paymentIntentId =
-        request.data && request.data.paymentIntentId;
+      const data = request.data || {};
+      const paymentIntentId = data.paymentIntentId;
       if (typeof paymentIntentId !== 'string' || !paymentIntentId.length) {
         throw new HttpsError('invalid-argument', 'Missing payment id.');
       }
+      const rawIds = Array.isArray(data.itemIds) ? data.itemIds : [];
+      const itemIds = [...new Set(
+          rawIds.filter((id) => typeof id === 'string' && id.length))].sort();
+      if (itemIds.length === 0) {
+        throw new HttpsError('invalid-argument', 'Missing order items.');
+      }
 
+      const uid = request.auth.uid;
       const intent = await stripeClient().paymentIntents.retrieve(
           paymentIntentId);
 
-      if (!intent.metadata || intent.metadata.uid !== request.auth.uid) {
+      if (!intent.metadata || intent.metadata.uid !== uid) {
         throw new HttpsError(
             'permission-denied', 'This payment belongs to another account.');
       }
@@ -169,6 +181,46 @@ exports.verifyCardPayment = onCall(
         throw new HttpsError(
             'failed-precondition', 'The card payment was not completed.');
       }
+
+      const paidIds = String(intent.metadata.itemIds || '')
+          .split(',').filter(Boolean).sort();
+      const sameItems =
+        paidIds.length === itemIds.length &&
+        paidIds.every((id, i) => id === itemIds[i]);
+      if (!sameItems) {
+        throw new HttpsError(
+            'permission-denied',
+            'This payment was made for different items than this order.');
+      }
+
+      // Record the claim. Re-verifying the same payment for the same items is
+      // fine (retry after a network error); any other use is refused.
+      const db = admin.firestore();
+      const claimRef = db.collection('paymentClaims').doc(intent.id);
+      await db.runTransaction(async (tx) => {
+        const claim = await tx.get(claimRef);
+        if (claim.exists) {
+          const c = claim.data();
+          const claimedIds = (c.itemIds || []).slice().sort();
+          const same =
+            c.uid === uid &&
+            claimedIds.length === itemIds.length &&
+            claimedIds.every((id, i) => id === itemIds[i]);
+          if (!same) {
+            throw new HttpsError(
+                'already-exists',
+                'This payment has already been used for another order.');
+          }
+          return;
+        }
+        tx.set(claimRef, {
+          uid,
+          itemIds,
+          amount: intent.amount,
+          currency: intent.currency,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
 
       return {
         paymentIntentId: intent.id,

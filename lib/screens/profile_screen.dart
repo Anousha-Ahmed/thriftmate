@@ -10,6 +10,7 @@ import '../services/order_service.dart';
 import '../services/saved_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
+import '../utils/impact.dart';
 import '../utils/role_router.dart';
 import '../widgets/thrift_photo.dart';
 import 'login_screen.dart';
@@ -179,6 +180,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final delivered =
                       orders.where((o) => o.status == 'delivered').length;
                   final rehomed = sold.length + delivered;
+                  final impact =
+                      impactForItems(sold) + impactForPieces(delivered);
 
                   return StreamBuilder<Set<String>>(
                     stream: _saved,
@@ -207,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           if (_isSeller) ...[
                             const SizedBox(height: 16),
-                            _impact(rehomed: rehomed),
+                            _impact(rehomed: rehomed, impact: impact),
                           ],
                           const SizedBox(height: 24),
                           _sectionTitle('Your closet'),
@@ -359,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _impact({required int rehomed}) {
+  Widget _impact({required int rehomed, required ImpactEstimate impact}) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -405,6 +408,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
               fontSize: 12,
               height: 1.4,
               color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          if (rehomed > 0) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _impactChip(
+                    Icons.water_drop_outlined,
+                    impact.waterLabel,
+                    'water saved',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _impactChip(
+                    Icons.cloud_outlined,
+                    impact.co2Label,
+                    'CO2 avoided',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Estimates based on the average footprint of making a new garment.',
+              style: GoogleFonts.dmSans(
+                fontSize: 10.5,
+                height: 1.4,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _impactChip(IconData icon, String value, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppColors.mustard),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '~$value',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.fraunces(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

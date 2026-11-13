@@ -19,6 +19,7 @@ import '../widgets/star_rating.dart';
 import 'add_edit_item_screen.dart';
 import 'home_screen.dart';
 import 'my_listings_screen.dart';
+import 'payouts_screen.dart';
 import 'profile_screen.dart';
 import 'seller_orders_screen.dart';
 
@@ -179,6 +180,13 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                             : '$pending ${pending == 1 ? 'order' : 'orders'} to ship',
                         badge: pending,
                         onTap: () => _go(const SellerOrdersScreen()),
+                      ),
+                      const Divider(height: 1),
+                      _tile(
+                        icon: Icons.account_balance_wallet_outlined,
+                        title: 'Earnings & payouts',
+                        subtitle: 'What you earn after the platform fee',
+                        onTap: () => _go(const PayoutsScreen()),
                       ),
                       const Divider(height: 1),
                       _tile(
