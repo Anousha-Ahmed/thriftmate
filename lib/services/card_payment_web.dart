@@ -122,11 +122,6 @@ class _CardPaymentPageState extends State<_CardPaymentPage> {
                 },
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Test mode: use card 4242 4242 4242 4242, any future expiry and any CVC.',
-              style: TextStyle(fontSize: 12, color: AppColors.muted),
-            ),
             const SizedBox(height: 18),
             ElevatedButton(
               onPressed: _paying || !_complete ? null : _pay,

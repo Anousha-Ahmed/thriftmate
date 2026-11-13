@@ -21,7 +21,15 @@ function usdCentsForPkr(pkr) {
 }
 
 function stripeClient() {
-  return new Stripe(STRIPE_SECRET_KEY.value());
+  const key = (STRIPE_SECRET_KEY.value() || '').trim();
+  if (!key || !key.startsWith('sk_') || key.includes('replace_me')) {
+    console.error('STRIPE_SECRET_KEY is missing or still a placeholder.');
+    throw new HttpsError(
+        'failed-precondition',
+        'Server Stripe secret key is not set. Check functions/.env and ' +
+        'restart the emulator.');
+  }
+  return new Stripe(key);
 }
 
 /**
@@ -97,20 +105,29 @@ exports.createPaymentIntent = onCall(
           db, itemIds, uid);
       const amount = usdCentsForPkr(totalPkr);
 
-      const intent = await stripeClient().paymentIntents.create({
-        amount,
-        currency: CURRENCY,
-        automatic_payment_methods: { enabled: true },
-        description: `ThriftMate order · ${itemIds.length} item(s)`,
-        metadata: {
-          uid,
-          itemIds: itemIds.join(','),
-          totalPkr: String(totalPkr),
-          subtotalPkr: String(subtotal),
-          deliveryFeePkr: String(deliveryFee),
-          platformFeePkr: String(Math.round(subtotal * PLATFORM_FEE_RATE)),
-        },
-      });
+      let intent;
+      try {
+        intent = await stripeClient().paymentIntents.create({
+          amount,
+          currency: CURRENCY,
+          payment_method_types: ['card'],
+          description: `ThriftMate order · ${itemIds.length} item(s)`,
+          metadata: {
+            uid,
+            itemIds: itemIds.join(','),
+            totalPkr: String(totalPkr),
+            subtotalPkr: String(subtotal),
+            deliveryFeePkr: String(deliveryFee),
+            platformFeePkr: String(Math.round(subtotal * PLATFORM_FEE_RATE)),
+          },
+        });
+      } catch (err) {
+        if (err instanceof HttpsError) throw err;
+        console.error('Stripe error:', err);
+        throw new HttpsError(
+            'failed-precondition',
+            `Stripe: ${err.message || 'could not create the payment'}`);
+      }
 
       return {
         clientSecret: intent.client_secret,

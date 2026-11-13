@@ -12,11 +12,6 @@ import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import 'order_success_screen.dart';
 
-const List<String> kCities = [
-  'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad',
-  'Multan', 'Peshawar', 'Quetta', 'Hyderabad', 'Other',
-];
-
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
@@ -37,10 +32,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _cityController = TextEditingController();
   final _addressController = TextEditingController();
 
   UserProfile? _profile;
-  String? _city;
   String _method = 'cod';
   bool _placing = false;
 
@@ -54,6 +49,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _cityController.dispose();
     _addressController.dispose();
     super.dispose();
   }
@@ -120,7 +116,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           shipping: ShippingAddress(
             name: _nameController.text.trim(),
             phone: _normalizedPhone(),
-            city: _city!,
+            city: _cityController.text.trim(),
             address: _addressController.text.trim(),
           ),
         );
@@ -283,15 +279,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  initialValue: _city,
-                  isExpanded: true,
-                  items: kCities
-                      .map((c) =>
-                          DropdownMenuItem<String>(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _city = v),
-                  validator: (v) => v == null ? 'Select your city' : null,
+                TextFormField(
+                  controller: _cityController,
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) => (v ?? '').trim().length < 2
+                      ? 'Enter your city'
+                      : null,
                   decoration: const InputDecoration(
                     labelText: 'City',
                     prefixIcon: Icon(Icons.location_city_outlined,
@@ -331,15 +324,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     subtitle:
                         'Visa / Mastercard · charged as ${usdLabelForPkr(subtotal + delivery)} via Stripe',
                   ),
-                  if (_method == 'card')
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8, left: 4),
-                      child: Text(
-                        'Stripe test mode: use 4242 4242 4242 4242 with any future expiry and CVC.',
-                        style: TextStyle(
-                            fontSize: 11.5, color: AppColors.textMuted),
-                      ),
-                    ),
                 ],
                 const SizedBox(height: 24),
 
